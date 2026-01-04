@@ -1,126 +1,117 @@
 # -------------------------------------------------
-# Page 1 : Executive Overview (CEO Dashboard)
+# Page 1 : Executive Overview
 # -------------------------------------------------
 
 import streamlit as st
-import pandas as pd
-import numpy as np
 
-from config import (
-    SESSION_DF_KEY,
-    CURRENCY_SYMBOL
+from utils.column_detector import auto_detect_columns
+from utils.data_processing import preprocess
+from utils.metrics import (
+    kpi_total_sales,
+    kpi_orders,
+    kpi_aov
+)
+from utils.visualizations import (
+    line_sales_trend,
+    bar_top
 )
 
-# -------------------------------------------------
-# Page Config
-# -------------------------------------------------
 st.set_page_config(
     page_title="Executive Overview",
     page_icon="🧠",
     layout="wide"
 )
 
-st.title("🧠 Executive Overview")
-st.caption("CEO-level snapshot of FMCG business performance")
+st.header("🧠 Executive Overview")
+st.caption("High-level FMCG business performance snapshot")
 
 st.divider()
 
 # -------------------------------------------------
-# Load Data Safely
+# Load Dataset
 # -------------------------------------------------
-df = st.session_state.get(SESSION_DF_KEY)
+df = st.session_state.get("df")
 
 if df is None or df.empty:
-    st.warning("Please upload data or connect Snowflake first.")
+    st.warning("📤 Upload dataset or connect Snowflake first")
     st.stop()
 
 # -------------------------------------------------
-# Column Detection (SAFE)
+# Auto Detect Columns
 # -------------------------------------------------
-def find_col(possible):
-    for c in possible:
-        if c in df.columns:
-            return c
-    return None
+cols = auto_detect_columns(df)
 
-sales_col = find_col(["sales", "total_sales", "revenue", "net_sales"])
-qty_col = find_col(["quantity", "qty", "units"])
-order_col = find_col(["order_id", "invoice_no", "bill_no"])
-date_col = find_col(["date", "order_date", "invoice_date"])
+required_cols = ["date", "sales"]
+
+missing = [c for c in required_cols if not cols.get(c)]
+if missing:
+    st.error(f"❌ Required columns not detected: {', '.join(missing)}")
+    st.stop()
 
 # -------------------------------------------------
-# KPI Calculations (ZERO RISK)
+# Preprocess Data
 # -------------------------------------------------
-total_sales = df[sales_col].sum() if sales_col else 0
-total_orders = df[order_col].nunique() if order_col else len(df)
-total_qty = df[qty_col].sum() if qty_col else 0
-
-aov = (
-    total_sales / total_orders
-    if total_orders > 0 else 0
-)
+df = preprocess(df, cols["date"])
 
 # -------------------------------------------------
-# KPI Cards
+# KPI Section
 # -------------------------------------------------
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3 = st.columns(3)
 
-c1.metric(
-    "💰 Total Sales",
-    f"{CURRENCY_SYMBOL}{total_sales:,.0f}"
-)
+with c1:
+    st.metric(
+        "💰 Total Sales",
+        f"{kpi_total_sales(df, cols['sales']):,.0f}"
+    )
 
-c2.metric(
-    "🧾 Total Orders",
-    f"{total_orders:,}"
-)
+with c2:
+    st.metric(
+        "🧾 Orders",
+        f"{kpi_orders(df):,}"
+    )
 
-c3.metric(
-    "📦 Total Volume",
-    f"{total_qty:,.0f}"
-)
-
-c4.metric(
-    "📈 Avg Order Value",
-    f"{CURRENCY_SYMBOL}{aov:,.0f}"
-)
+with c3:
+    st.metric(
+        "📈 Avg Order Value",
+        f"{kpi_aov(df, cols['sales']):,.0f}"
+    )
 
 st.divider()
 
 # -------------------------------------------------
-# AI EXECUTIVE SUMMARY (RULE-BASED)
+# Sales Trend
 # -------------------------------------------------
-st.subheader("🧠 AI Executive Summary")
+st.subheader("📊 Sales Trend")
 
-summary = []
-
-if total_sales > 0:
-    summary.append(
-        f"Overall revenue stands at {CURRENCY_SYMBOL}{total_sales:,.0f}, "
-        "indicating active sales performance."
-    )
-
-if aov > 0:
-    summary.append(
-        f"Average order value is {CURRENCY_SYMBOL}{aov:,.0f}, "
-        "reflecting current pricing and basket size."
-    )
-
-if total_orders > 0:
-    summary.append(
-        f"Business processed {total_orders:,} orders in the selected dataset."
-    )
-
-if not summary:
-    summary.append(
-        "Insufficient data available to generate insights."
-    )
-
-for line in summary:
-    st.markdown(f"- {line}")
+st.plotly_chart(
+    line_sales_trend(
+        df,
+        cols["date"],
+        cols["sales"]
+    ),
+    use_container_width=True
+)
 
 # -------------------------------------------------
-# DATA PREVIEW (CEO Friendly)
+# Brand Performance (Optional)
 # -------------------------------------------------
-with st.expander("📄 Data Preview", expanded=False):
+if cols.get("brand"):
+    st.subheader("🏷️ Top Brands")
+
+    st.plotly_chart(
+        bar_top(
+            df,
+            cols["brand"],
+            cols["sales"],
+            "Top Brands"
+        ),
+        use_container_width=True
+    )
+else:
+    st.info("ℹ️ Brand column not found — skipping brand analysis")
+
+# -------------------------------------------------
+# Data Preview
+# -------------------------------------------------
+with st.expander("📄 Data Preview"):
     st.dataframe(df.head(50), use_container_width=True)
