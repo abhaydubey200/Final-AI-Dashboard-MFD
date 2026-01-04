@@ -1,33 +1,38 @@
-# pages/5_Field_Force_Productivity.py
+# pages/7_Sales_Forecasting.py
 # -------------------------------------------------
-# Field Force Productivity Dashboard
+# Sales Forecasting (Time-Series)
 # -------------------------------------------------
 
 import streamlit as st
+import plotly.express as px
+
 from utils.column_detector import auto_detect_columns
-from utils.visualizations import bar_top
+from utils.forecasting import prepare_time_series, forecast_sales
 
 # -------------------------------------------------
-# Page Config
+# Page Configuration
 # -------------------------------------------------
 st.set_page_config(
-    page_title="Field Force Productivity | DS Group",
-    page_icon="🧑‍💼",
+    page_title="Sales Forecasting | DS Group",
+    page_icon="🔮",
     layout="wide"
 )
 
-st.title("🧑‍💼 Field Force Productivity")
-st.caption("Evaluate sales representative efficiency & contribution")
+st.title("🔮 Sales Forecasting")
+st.caption(
+    "Predict future sales trends to support "
+    "**inventory planning, budgeting, and growth strategy**"
+)
 
 st.divider()
 
 # -------------------------------------------------
-# Load Dataset
+# Load Dataset (Upload / Snowflake)
 # -------------------------------------------------
 df = st.session_state.get("df")
 
 if df is None or df.empty:
-    st.warning("📤 Upload dataset or connect Snowflake first.")
+    st.warning("📤 Upload dataset or connect Snowflake to continue.")
     st.stop()
 
 # -------------------------------------------------
@@ -35,62 +40,137 @@ if df is None or df.empty:
 # -------------------------------------------------
 cols = auto_detect_columns(df)
 
-rep_col = cols.get("rep")
+date_col = cols.get("date")
 sales_col = cols.get("sales")
-qty_col = cols.get("quantity")
 
 # -------------------------------------------------
 # Validation
 # -------------------------------------------------
-if not rep_col:
-    st.warning("⚠ Sales representative column not detected.")
-    st.stop()
-
-if not sales_col:
-    st.warning("⚠ Sales column not detected.")
+if not date_col or not sales_col:
+    st.error(
+        "❌ Required columns not detected.\n\n"
+        f"- Date column: `{date_col}`\n"
+        f"- Sales column: `{sales_col}`"
+    )
     st.stop()
 
 # -------------------------------------------------
-# Charts
+# Prepare Time Series
 # -------------------------------------------------
-st.subheader("📊 Sales Contribution by Sales Representative")
+try:
+    ts_df = prepare_time_series(df, date_col, sales_col)
+except Exception as e:
+    st.error("❌ Failed to prepare time-series data.")
+    st.exception(e)
+    st.stop()
 
-st.plotly_chart(
-    bar_top(
-        df,
-        rep_col,
-        sales_col,
-        title="Sales per Sales Representative",
-        top_n=15
-    ),
-    use_container_width=True
+# -------------------------------------------------
+# Historical Sales Trend
+# -------------------------------------------------
+st.subheader("📊 Historical Sales Trend")
+
+fig_hist = px.line(
+    ts_df,
+    x="Date",
+    y="Sales",
+    markers=True,
+    title="Historical Sales Performance"
+)
+
+fig_hist.update_layout(
+    xaxis_title="Date",
+    yaxis_title="Sales",
+    template="plotly_white"
+)
+
+st.plotly_chart(fig_hist, use_container_width=True)
+
+# -------------------------------------------------
+# Forecast Controls
+# -------------------------------------------------
+st.subheader("🔮 Forecast Settings")
+
+forecast_months = st.slider(
+    "Forecast Duration (Months)",
+    min_value=3,
+    max_value=24,
+    value=12,
+    help="Select how many months into the future to forecast"
 )
 
 # -------------------------------------------------
-# Quantity Productivity
+# Forecast Generation
 # -------------------------------------------------
-if qty_col:
-    st.subheader("📦 Quantity Sold by Sales Representative")
-
-    st.plotly_chart(
-        bar_top(
-            df,
-            rep_col,
-            qty_col,
-            title="Quantity Sold per Sales Representative",
-            top_n=15
-        ),
-        use_container_width=True
-    )
-else:
-    st.info("ℹ Quantity column not available — showing sales-based productivity only.")
+try:
+    forecast_df = forecast_sales(ts_df, periods=forecast_months)
+except Exception as e:
+    st.error("❌ Forecasting failed. Please check data quality.")
+    st.exception(e)
+    st.stop()
 
 # -------------------------------------------------
-# Business Insight
+# Forecast Plot
+# -------------------------------------------------
+st.subheader("📈 Forecasted Sales")
+
+fig_forecast = px.line(
+    forecast_df,
+    x="Date",
+    y="Sales",
+    markers=True,
+    title="Forecasted Sales Trend"
+)
+
+fig_forecast.update_layout(
+    xaxis_title="Date",
+    yaxis_title="Forecasted Sales",
+    template="plotly_white"
+)
+
+st.plotly_chart(fig_forecast, use_container_width=True)
+
+# -------------------------------------------------
+# Actual vs Forecast Comparison
+# -------------------------------------------------
+st.subheader("📊 Actual vs Forecast Comparison")
+
+actual_df = ts_df.copy()
+actual_df["Type"] = "Actual"
+
+forecast_plot_df = forecast_df.copy()
+forecast_plot_df["Type"] = "Forecast"
+
+comparison_df = actual_df._append(
+    forecast_plot_df,
+    ignore_index=True
+)
+
+fig_compare = px.line(
+    comparison_df,
+    x="Date",
+    y="Sales",
+    color="Type",
+    markers=True,
+    title="Actual vs Forecast Sales"
+)
+
+fig_compare.update_layout(
+    xaxis_title="Date",
+    yaxis_title="Sales",
+    template="plotly_white"
+)
+
+st.plotly_chart(fig_compare, use_container_width=True)
+
+# -------------------------------------------------
+# Business Insights
 # -------------------------------------------------
 st.info(
-    "📌 **Insights:**\n\n"
-    "- Identify top-performing sales representatives\n"
-    "- Detect underperformers for coaching\n"
-    "- Align incentives with actual field contribution"
+    "📌 **How to use this forecast:**\n\n"
+    "- 📦 Plan inventory and warehouse capacity\n"
+    "- 💰 Improve budget and cash-flow forecasting\n"
+    "- 🏭 Align production with future demand\n"
+    "- 🎯 Support strategic sales targets"
 )
+
+st.success("✅ Sales forecast generated successfully")
