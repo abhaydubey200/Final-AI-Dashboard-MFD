@@ -1,0 +1,65 @@
+/* ===== GLOBAL ===== */
+body {
+    background-color: #ffffff;
+    color: #000000;
+}
+
+/* ===== HEADER ===== */
+.page-title {
+    font-size: 32px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.page-subtitle {
+    font-size: 16px;
+    color: #444;
+    margin-bottom: 24px;
+}
+
+/* ===== KPI CARDS ===== */
+.kpi-container {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.kpi-card {
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 18px;
+    flex: 1;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+    border-left: 6px solid #1B7F5A;
+}
+
+.kpi-title {
+    font-size: 14px;
+    color: #555;
+}
+
+.kpi-value {
+    font-size: 28px;
+    font-weight: 700;
+    margin-top: 6px;
+}
+
+/* ===== AI SUMMARY ===== */
+.ai-box {
+    background: #F0FFF8;
+    border-left: 6px solid #1B7F5A;
+    padding: 18px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+}
+
+.ai-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+/* ===== SECTION ===== */
+.section {
+    margin-top: 32px;
+}
