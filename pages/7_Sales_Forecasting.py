@@ -1,157 +1,122 @@
-# pages/7_Sales_Forecasting.py
+# utils/forecasting.py
 # -------------------------------------------------
-# Sales Forecasting & Demand Planning
+# Robust Forecasting Utilities (Prophet + Fallback)
 # -------------------------------------------------
 
-import streamlit as st
-import plotly.express as px
+import pandas as pd
+import numpy as np
 
-from utils.forecasting import prepare_time_series, forecast_sales
-from utils.column_detector import auto_detect_columns
+from sklearn.linear_model import LinearRegression
 
-# -------------------------------------------------
-# Page Config
-# -------------------------------------------------
-st.set_page_config(
-    page_title="Sales Forecasting & Demand Planning | DS Group",
-    page_icon="📈",
-    layout="wide"
-)
+try:
+    from prophet import Prophet
+    PROPHET_AVAILABLE = True
+except Exception:
+    PROPHET_AVAILABLE = False
 
-st.title("📈 Sales Forecasting & Demand Planning")
-st.caption(
-    "AI-driven monthly sales forecasting for inventory planning, budgeting, "
-    "and leadership decision-making."
-)
 
-st.divider()
+def prepare_time_series(df, date_col, sales_col, freq="M"):
+    """
+    Prepare aggregated time series data with STANDARDIZED output.
+    Returns columns: Date, Sales
+    """
 
-# -------------------------------------------------
-# Load Dataset
-# -------------------------------------------------
-df = st.session_state.get("df")
+    temp = df[[date_col, sales_col]].copy()
+    temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
 
-if df is None or df.empty:
-    st.warning("📤 Upload dataset or connect Snowflake first.")
-    st.stop()
-
-# -------------------------------------------------
-# Auto Detect Columns
-# -------------------------------------------------
-cols = auto_detect_columns(df)
-
-date_col = cols.get("date")
-sales_col = cols.get("sales")
-
-if not date_col or not sales_col:
-    st.error("❌ Date or Sales column not detected in dataset.")
-    st.stop()
-
-# -------------------------------------------------
-# Forecast Configuration
-# -------------------------------------------------
-st.subheader("⚙ Forecast Configuration")
-
-c1, c2 = st.columns(2)
-
-with c1:
-    months = st.slider(
-        "Forecast Horizon (Months)",
-        min_value=3,
-        max_value=24,
-        value=12
+    temp = (
+        temp
+        .groupby(pd.Grouper(key=date_col, freq=freq))[sales_col]
+        .sum()
+        .reset_index()
+        .dropna()
     )
 
-with c2:
-    freq = st.selectbox(
-        "Forecast Frequency",
-        ["Monthly"],
-        disabled=True
+    temp = temp.rename(
+        columns={
+            date_col: "Date",
+            sales_col: "Sales"
+        }
     )
 
-# -------------------------------------------------
-# Prepare Time Series (STANDARDIZED OUTPUT)
-# -------------------------------------------------
-ts_df = prepare_time_series(df, date_col, sales_col)
+    temp = temp.sort_values("Date").reset_index(drop=True)
 
-# ---- HARD STANDARDIZATION (CRITICAL FIX) ----
-# Ensure consistent column names for ALL downstream logic
-ts_df = ts_df.rename(
-    columns={
-        ts_df.columns[0]: "Date",
-        ts_df.columns[1]: "Sales"
-    }
-)
+    return temp
 
-# -------------------------------------------------
-# Historical Sales Trend
-# -------------------------------------------------
-st.subheader("📊 Historical Sales Trend")
 
-fig1 = px.line(
-    ts_df,
-    x="Date",
-    y="Sales",
-    markers=True,
-    title="Historical Sales Performance"
-)
-st.plotly_chart(fig1, use_container_width=True)
+def forecast_sales(ts_df: pd.DataFrame, periods: int = 6) -> pd.DataFrame:
+    """
+    Forecast future sales.
+    Uses Prophet if available, otherwise falls back to Linear Regression.
+    """
 
-# -------------------------------------------------
-# Forecast Sales
-# -------------------------------------------------
-st.subheader("🔮 Sales Forecast")
+    # ----------------------------
+    # Validate input
+    # ----------------------------
+    if "Date" not in ts_df.columns or "Sales" not in ts_df.columns:
+        raise ValueError("Time series must contain 'Date' and 'Sales' columns")
 
-forecast_df = forecast_sales(ts_df, periods=months)
+    ts_df = ts_df.copy()
 
-# ---- STANDARDIZE FORECAST OUTPUT ----
-forecast_df = forecast_df.rename(
-    columns={
-        forecast_df.columns[0]: "Date",
-        forecast_df.columns[1]: "Sales"
-    }
-)
+    # ----------------------------
+    # TRY PROPHET (PRIMARY)
+    # ----------------------------
+    if PROPHET_AVAILABLE:
+        try:
+            prophet_df = ts_df.rename(
+                columns={
+                    "Date": "ds",
+                    "Sales": "y"
+                }
+            )
 
-fig2 = px.line(
-    forecast_df,
-    x="Date",
-    y="Sales",
-    markers=True,
-    title="Forecasted Sales"
-)
-st.plotly_chart(fig2, use_container_width=True)
+            model = Prophet()
+            model.fit(prophet_df)
 
-# -------------------------------------------------
-# Actual vs Forecast Comparison
-# -------------------------------------------------
-st.subheader("📈 Actual vs Forecast Comparison")
+            future = model.make_future_dataframe(
+                periods=periods,
+                freq="M"
+            )
 
-actual_df = ts_df.copy()
-actual_df["Type"] = "Actual"
+            forecast = model.predict(future)
 
-forecast_plot_df = forecast_df.copy()
-forecast_plot_df["Type"] = "Forecast"
+            result = forecast[["ds", "yhat"]].tail(periods)
+            result = result.rename(
+                columns={
+                    "ds": "Date",
+                    "yhat": "Sales"
+                }
+            )
 
-final_df = actual_df._append(forecast_plot_df, ignore_index=True)
+            return result.reset_index(drop=True)
 
-fig3 = px.line(
-    final_df,
-    x="Date",
-    y="Sales",
-    color="Type",
-    markers=True,
-    title="Actual vs Forecast Sales"
-)
-st.plotly_chart(fig3, use_container_width=True)
+        except Exception:
+            # Prophet failed → fallback
+            pass
 
-# -------------------------------------------------
-# Executive Insight
-# -------------------------------------------------
-st.info(
-    "🧠 **Executive Insight:**\n\n"
-    "- Supports demand planning and inventory optimization\n"
-    "- Enables proactive budgeting and capacity planning\n"
-    "- Improves leadership visibility into future growth trends"
-)
+    # ----------------------------
+    # FALLBACK: Linear Regression
+    # ----------------------------
+    ts_df["t"] = np.arange(len(ts_df))
 
-st.success("✅ Sales Forecast generated successfully")
+    X = ts_df[["t"]]
+    y = ts_df["Sales"]
+
+    model = LinearRegression()
+    model.fit(X, y)
+
+    future_t = np.arange(len(ts_df), len(ts_df) + periods)
+    future_sales = model.predict(future_t.reshape(-1, 1))
+
+    future_dates = pd.date_range(
+        start=ts_df["Date"].iloc[-1],
+        periods=periods + 1,
+        freq="M"
+    )[1:]
+
+    forecast_df = pd.DataFrame({
+        "Date": future_dates,
+        "Sales": future_sales
+    })
+
+    return forecast_df.reset_index(drop=True)
