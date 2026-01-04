@@ -1,25 +1,23 @@
-# pages/7_Warehouse_Logistics.py
+# pages/5_Field_Force_Productivity.py
 # -------------------------------------------------
-# Warehouse & Logistics Performance
+# Field Force Productivity Dashboard
 # -------------------------------------------------
 
 import streamlit as st
-
 from utils.column_detector import auto_detect_columns
-from utils.metrics import kpi_total_sales
 from utils.visualizations import bar_top
 
 # -------------------------------------------------
 # Page Config
 # -------------------------------------------------
 st.set_page_config(
-    page_title="Warehouse & Logistics | DS Group",
-    page_icon="🏭",
+    page_title="Field Force Productivity | DS Group",
+    page_icon="🧑‍💼",
     layout="wide"
 )
 
-st.title("🏭 Warehouse & Logistics Performance")
-st.caption("Distribution efficiency, warehouse contribution & outlet flow")
+st.title("🧑‍💼 Field Force Productivity")
+st.caption("Evaluate sales representative efficiency & contribution")
 
 st.divider()
 
@@ -29,7 +27,7 @@ st.divider()
 df = st.session_state.get("df")
 
 if df is None or df.empty:
-    st.warning("📤 Please upload dataset or connect Snowflake.")
+    st.warning("📤 Upload dataset or connect Snowflake first.")
     st.stop()
 
 # -------------------------------------------------
@@ -37,81 +35,62 @@ if df is None or df.empty:
 # -------------------------------------------------
 cols = auto_detect_columns(df)
 
+rep_col = cols.get("rep")
 sales_col = cols.get("sales")
-warehouse_col = cols.get("warehouse")
-outlet_col = cols.get("outlet") or cols.get("store")
+qty_col = cols.get("quantity")
+
+# -------------------------------------------------
+# Validation
+# -------------------------------------------------
+if not rep_col:
+    st.warning("⚠ Sales representative column not detected.")
+    st.stop()
 
 if not sales_col:
-    st.error("❌ Sales column not detected.")
+    st.warning("⚠ Sales column not detected.")
     st.stop()
 
 # -------------------------------------------------
-# KPIs
+# Charts
 # -------------------------------------------------
-k1, k2, k3 = st.columns(3)
+st.subheader("📊 Sales Contribution by Sales Representative")
 
-k1.metric(
-    "💰 Total Sales",
-    f"{kpi_total_sales(df, sales_col):,.0f}"
+st.plotly_chart(
+    bar_top(
+        df,
+        rep_col,
+        sales_col,
+        title="Sales per Sales Representative",
+        top_n=15
+    ),
+    use_container_width=True
 )
 
-k2.metric(
-    "🏭 Warehouses",
-    df[warehouse_col].nunique() if warehouse_col else "N/A"
-)
-
-k3.metric(
-    "🏬 Outlets Served",
-    df[outlet_col].nunique() if outlet_col else "N/A"
-)
-
-st.divider()
-
 # -------------------------------------------------
-# Warehouse Performance
+# Quantity Productivity
 # -------------------------------------------------
-if warehouse_col:
-    st.subheader("📊 Warehouse Contribution to Sales")
+if qty_col:
+    st.subheader("📦 Quantity Sold by Sales Representative")
 
     st.plotly_chart(
         bar_top(
             df,
-            warehouse_col,
-            sales_col,
-            title="Top Warehouses by Sales",
-            top_n=15
-        ),
-        use_container_width=True
-    )
-
-else:
-    st.warning("⚠ Warehouse column not found.")
-
-# -------------------------------------------------
-# Outlet Distribution
-# -------------------------------------------------
-if outlet_col:
-    st.subheader("🏬 Top Outlets by Sales Volume")
-
-    st.plotly_chart(
-        bar_top(
-            df,
-            outlet_col,
-            sales_col,
-            title="Top Outlets by Sales",
+            rep_col,
+            qty_col,
+            title="Quantity Sold per Sales Representative",
             top_n=15
         ),
         use_container_width=True
     )
 else:
-    st.warning("⚠ Outlet / Store column not found.")
+    st.info("ℹ Quantity column not available — showing sales-based productivity only.")
 
 # -------------------------------------------------
-# Operational Insight
+# Business Insight
 # -------------------------------------------------
 st.info(
-    "📌 **Operational Insight:**\n\n"
-    "- Identify warehouses driving maximum revenue\n"
-    "- Detect outlet dependency on single warehouses\n"
-    "- Optimize inventory placement for faster fulfillment"
+    "📌 **Insights:**\n\n"
+    "- Identify top-performing sales representatives\n"
+    "- Detect underperformers for coaching\n"
+    "- Align incentives with actual field contribution"
 )
