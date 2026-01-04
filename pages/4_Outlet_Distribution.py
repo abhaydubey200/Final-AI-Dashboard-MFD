@@ -1,203 +1,134 @@
+# pages/4_Outlet_Distribution.py
+# -------------------------------------------------
+# Outlet Distribution & Coverage Analysis
+# -------------------------------------------------
+
 import streamlit as st
 import pandas as pd
 
-from config import SESSION_DF_KEY
 from utils.column_detector import auto_detect_columns
-from utils.data_processing import preprocess
-from utils.metrics import top_contributors
-from utils.warehouse_metrics import outlet_distribution_metrics
-from utils.visualizations import bar_top, pie_chart
+from utils.metrics import (
+    kpi_total_sales,
+    kpi_orders,
+)
+from utils.visualizations import (
+    bar_top
+)
 
 # -------------------------------------------------
 # Page Config
 # -------------------------------------------------
 st.set_page_config(
-    page_title="Outlet Distribution & Coverage",
-    layout="wide",
+    page_title="Outlet Distribution | DS Group",
+    page_icon="🏪",
+    layout="wide"
 )
+
+st.title("🏪 Outlet Distribution & Coverage")
+st.caption("Analyze outlet contribution, coverage strength & concentration")
+
+st.divider()
 
 # -------------------------------------------------
 # Load Dataset
 # -------------------------------------------------
-df = st.session_state.get(SESSION_DF_KEY)
+df = st.session_state.get("df")
 
 if df is None or df.empty:
-    st.warning("📥 Upload data or connect Snowflake to continue.")
+    st.warning("📤 Please upload dataset or connect Snowflake.")
     st.stop()
 
 # -------------------------------------------------
-# Auto Column Detection
+# Auto Detect Columns
 # -------------------------------------------------
 cols = auto_detect_columns(df)
 
-outlet_col = cols.get("outlet")
-city_col = cols.get("city")
-warehouse_col = cols.get("warehouse")
-sales_col = cols.get("sales")
-date_col = cols.get("date")
+required = ["outlet", "sales", "date"]
+missing = [c for c in required if not cols.get(c)]
+
+if missing:
+    st.error(f"❌ Required columns missing: {missing}")
+    st.stop()
 
 # -------------------------------------------------
-# Preprocess
+# Safe Date Handling
 # -------------------------------------------------
-df = preprocess(df, date_col)
-
-# -------------------------------------------------
-# Header
-# -------------------------------------------------
-st.title("🏪 Outlet Distribution & Market Coverage")
-st.markdown(
-    "Evaluate **outlet reach, geographic dominance, and distribution risk** "
-    "to strengthen FMCG supply strategy."
-)
-
-st.divider()
-
-# -------------------------------------------------
-# FILTERS
-# -------------------------------------------------
-with st.expander("🎯 Filters", expanded=False):
-    c1, c2 = st.columns(2)
-
-    with c1:
-        if city_col:
-            cities = st.multiselect(
-                "City",
-                sorted(df[city_col].dropna().unique())
-            )
-            if cities:
-                df = df[df[city_col].isin(cities)]
-
-    with c2:
-        if warehouse_col:
-            warehouses = st.multiselect(
-                "Warehouse",
-                sorted(df[warehouse_col].dropna().unique())
-            )
-            if warehouses:
-                df = df[df[warehouse_col].isin(warehouses)]
+df = df.copy()
+df[cols["date"]] = pd.to_datetime(df[cols["date"]], errors="coerce")
+df = df.dropna(subset=[cols["date"]])
 
 # -------------------------------------------------
 # KPI SECTION
 # -------------------------------------------------
-st.markdown("## 📌 Distribution KPIs")
-
 k1, k2, k3 = st.columns(3)
 
-total_outlets = df[outlet_col].nunique() if outlet_col else 0
-total_cities = df[city_col].nunique() if city_col else 0
-total_warehouses = df[warehouse_col].nunique() if warehouse_col else 0
+k1.metric(
+    "🏪 Total Outlets",
+    f"{df[cols['outlet']].nunique():,}"
+)
 
-k1.metric("🏪 Total Active Outlets", f"{total_outlets:,}")
-k2.metric("🌆 Cities Covered", f"{total_cities:,}")
-k3.metric("🏭 Warehouses", f"{total_warehouses:,}")
+k2.metric(
+    "💰 Total Sales",
+    f"{kpi_total_sales(df, cols['sales']):,.0f}"
+)
+
+k3.metric(
+    "🧾 Total Orders",
+    f"{kpi_orders(df):,}"
+)
 
 st.divider()
 
 # -------------------------------------------------
-# CITY LEVEL DISTRIBUTION
+# Outlet Contribution
 # -------------------------------------------------
-st.markdown("## 🌆 City-wise Outlet Coverage")
+st.subheader("📊 Top Outlets by Sales")
 
-if city_col and outlet_col:
-    city_outlets = (
-        df.groupby(city_col)[outlet_col]
-        .nunique()
-        .reset_index(name="Outlet Count")
-        .sort_values("Outlet Count", ascending=False)
-    )
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-        st.plotly_chart(
-            bar_top(
-                city_outlets,
-                city_col,
-                "Outlet Count",
-                title="Top Cities by Outlet Count"
-            ),
-            use_container_width=True
-        )
-
-    with c2:
-        st.plotly_chart(
-            pie_chart(
-                city_outlets.head(8),
-                city_col,
-                "Outlet Count",
-                title="Outlet Share by City"
-            ),
-            use_container_width=True
-        )
-
-# -------------------------------------------------
-# WAREHOUSE DISTRIBUTION
-# -------------------------------------------------
-st.markdown("## 🏭 Warehouse-wise Distribution")
-
-if warehouse_col and sales_col:
-    warehouse_metrics = outlet_distribution_metrics(df)
-
-    w1, w2 = st.columns(2)
-
-    with w1:
-        st.plotly_chart(
-            bar_top(
-                warehouse_metrics,
-                warehouse_col,
-                "Total_Sales",
-                title="Warehouse Sales Contribution"
-            ),
-            use_container_width=True
-        )
-
-    with w2:
-        st.dataframe(
-            warehouse_metrics,
-            use_container_width=True
-        )
-
-# -------------------------------------------------
-# DEPENDENCY RISK
-# -------------------------------------------------
-st.markdown("## ⚠ Distribution Dependency Risk")
-
-if city_col and sales_col:
-    city_sales = top_contributors(
+st.plotly_chart(
+    bar_top(
         df,
-        city_col,
-        sales_col,
-        top_n=5
-    )
-
-    st.plotly_chart(
-        pie_chart(
-            city_sales,
-            city_col,
-            sales_col,
-            title="Top 5 Cities – Revenue Dependency"
-        ),
-        use_container_width=True
-    )
-
-    st.warning(
-        "⚠ Heavy revenue dependency on limited cities increases operational risk."
-    )
-
-# -------------------------------------------------
-# EXECUTIVE INSIGHTS
-# -------------------------------------------------
-st.markdown("## 🧠 Executive Insights")
-
-st.success(
-    """
-• Uneven outlet concentration suggests **white-space expansion opportunities**  
-• High dependency on select cities/warehouses → **supply chain risk**  
-• Optimizing outlet mix improves **service levels & revenue stability**
-"""
+        cols["outlet"],
+        cols["sales"],
+        title="Top Performing Outlets",
+        top_n=20
+    ),
+    use_container_width=True
 )
 
 # -------------------------------------------------
-# Footer
+# Outlet Concentration Insight
 # -------------------------------------------------
-st.caption("Outlet Distribution Intelligence • FMCG Executive Dashboard • DS Group")
+st.subheader("📈 Outlet Sales Concentration")
+
+outlet_sales = (
+    df.groupby(cols["outlet"])[cols["sales"]]
+    .sum()
+    .sort_values(ascending=False)
+)
+
+top_20_share = (
+    outlet_sales.head(20).sum() / outlet_sales.sum()
+) * 100
+
+st.metric(
+    "Top 20 Outlets Contribution",
+    f"{top_20_share:.2f}%"
+)
+
+st.info(
+    "📌 **Insight:** High concentration indicates dependency on a limited number "
+    "of outlets. Diversifying outlet contribution reduces revenue risk."
+)
+
+# -------------------------------------------------
+# Outlet-Level Table
+# -------------------------------------------------
+with st.expander("📄 Outlet Sales Table"):
+    outlet_table = (
+        df.groupby(cols["outlet"], as_index=False)[cols["sales"]]
+        .sum()
+        .rename(columns={cols["sales"]: "Total_Sales"})
+        .sort_values("Total_Sales", ascending=False)
+    )
+
+    st.dataframe(outlet_table, use_container_width=True)
