@@ -1,11 +1,19 @@
 [server]
-maxUploadSize = 2048
-enableXsrfProtection = true
+headless = true
 enableCORS = false
+enableXsrfProtection = true
+port = $PORT
+
+#  Increase upload limit to 2GB
+maxUploadSize = 2048
+
+[client]
+showSidebarNavigation = true
+toolbarMode = "viewer"
 
 [theme]
 base = "light"
-primaryColor = "#1B7F5A"
+primaryColor = "#1F7A4F"         # DS Group green
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F5F7FA"
 textColor = "#000000"
