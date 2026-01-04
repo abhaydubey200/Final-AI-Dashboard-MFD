@@ -1,198 +1,145 @@
+# pages/3_Product_SKU_Brand.py
+# -------------------------------------------------
+# Product / SKU / Brand Performance Dashboard
+# -------------------------------------------------
+
 import streamlit as st
 import pandas as pd
 
-from config import SESSION_DF_KEY, CURRENCY_SYMBOL
 from utils.column_detector import auto_detect_columns
-from utils.data_processing import preprocess
-from utils.metrics import top_contributors
-from utils.pricing_metrics import sku_price_metrics
+from utils.metrics import (
+    kpi_total_sales,
+    kpi_orders,
+    kpi_aov
+)
 from utils.visualizations import (
     bar_top,
-    pie_chart,
-    scatter_price_qty,
+    line_sales_trend
 )
 
 # -------------------------------------------------
 # Page Config
 # -------------------------------------------------
 st.set_page_config(
-    page_title="Product • SKU • Brand Analysis",
-    layout="wide",
+    page_title="Product & Brand Performance | DS Group",
+    page_icon="🏷️",
+    layout="wide"
 )
 
+st.title("🏷️ Product / SKU / Brand Performance")
+st.caption("Deep dive into brand-level and SKU-level contribution")
+
+st.divider()
+
 # -------------------------------------------------
-# Load Data
+# Load Dataset (STANDARD)
 # -------------------------------------------------
-df = st.session_state.get(SESSION_DF_KEY)
+df = st.session_state.get("df")
 
 if df is None or df.empty:
-    st.warning("📥 Upload data or connect Snowflake to continue.")
+    st.warning("📤 Please upload dataset or connect Snowflake.")
     st.stop()
 
 # -------------------------------------------------
-# Column Detection
+# Auto Detect Columns
 # -------------------------------------------------
 cols = auto_detect_columns(df)
 
-brand_col = cols.get("brand")
-sku_col = cols.get("sku")
-sales_col = cols.get("sales")
-qty_col = cols.get("quantity")
-date_col = cols.get("date")
+required_cols = ["date", "sales"]
+missing = [c for c in required_cols if not cols.get(c)]
+
+if missing:
+    st.error(f"❌ Required columns missing: {missing}")
+    st.stop()
 
 # -------------------------------------------------
-# Preprocess
+# Safe Date Handling (INLINE)
 # -------------------------------------------------
-df = preprocess(df, date_col)
+df = df.copy()
+df[cols["date"]] = pd.to_datetime(df[cols["date"]], errors="coerce")
+df = df.dropna(subset=[cols["date"]])
 
 # -------------------------------------------------
-# Header
+# KPI SECTION
 # -------------------------------------------------
-st.title("📦 Product / SKU / Brand Performance")
-st.markdown(
-    "Analyze **brand dominance, SKU efficiency, and pricing behavior** "
-    "to drive portfolio optimization."
+k1, k2, k3 = st.columns(3)
+
+k1.metric(
+    "💰 Total Sales",
+    f"{kpi_total_sales(df, cols['sales']):,.0f}"
+)
+
+k2.metric(
+    "🧾 Total Orders",
+    f"{kpi_orders(df):,}"
+)
+
+k3.metric(
+    "📊 Avg Order Value",
+    f"{kpi_aov(df, cols['sales']):,.0f}"
 )
 
 st.divider()
 
 # -------------------------------------------------
-# FILTERS
+# Brand Performance
 # -------------------------------------------------
-with st.expander("🎯 Filters", expanded=False):
-    f1, f2 = st.columns(2)
+if cols.get("brand"):
+    st.subheader("🏷️ Top Brands by Sales")
 
-    with f1:
-        if brand_col:
-            brands = st.multiselect(
-                "Brand",
-                sorted(df[brand_col].dropna().unique())
-            )
-            if brands:
-                df = df[df[brand_col].isin(brands)]
-
-    with f2:
-        if "Year" in df.columns:
-            years = st.multiselect(
-                "Year",
-                sorted(df["Year"].unique())
-            )
-            if years:
-                df = df[df["Year"].isin(years)]
-
-# -------------------------------------------------
-# BRAND PERFORMANCE
-# -------------------------------------------------
-st.markdown("## 🏷 Brand Performance")
-
-b1, b2 = st.columns(2)
-
-with b1:
-    if brand_col:
-        st.plotly_chart(
-            bar_top(
-                df,
-                brand_col,
-                sales_col,
-                title="Top Brands by Sales"
-            ),
-            use_container_width=True
-        )
-
-with b2:
-    if brand_col:
-        brand_share = top_contributors(
-            df,
-            brand_col,
-            sales_col,
-            top_n=8
-        )
-        st.plotly_chart(
-            pie_chart(
-                brand_share,
-                brand_col,
-                sales_col,
-                title="Brand Sales Share"
-            ),
-            use_container_width=True
-        )
-
-# -------------------------------------------------
-# SKU PERFORMANCE
-# -------------------------------------------------
-st.markdown("## 🧾 SKU Performance")
-
-s1, s2 = st.columns(2)
-
-with s1:
-    if sku_col:
-        st.plotly_chart(
-            bar_top(
-                df,
-                sku_col,
-                sales_col,
-                title="Top SKUs by Sales"
-            ),
-            use_container_width=True
-        )
-
-with s2:
-    if sku_col:
-        st.plotly_chart(
-            bar_top(
-                df,
-                sku_col,
-                qty_col,
-                title="Top SKUs by Quantity"
-            ),
-            use_container_width=True
-        )
-
-# -------------------------------------------------
-# PRICE vs QUANTITY INTELLIGENCE
-# -------------------------------------------------
-st.markdown("## 💰 Price vs Quantity Intelligence")
-
-if sales_col and qty_col:
     st.plotly_chart(
-        scatter_price_qty(
+        bar_top(
             df,
-            sales_col,
-            qty_col,
-            title="Revenue vs Volume (SKU Level)"
+            cols["brand"],
+            cols["sales"],
+            title="Top Brands",
+            top_n=15
         ),
         use_container_width=True
     )
-else:
-    st.info("Sales or Quantity column missing for price-volume analysis.")
 
 # -------------------------------------------------
-# SKU PRICING METRICS
+# SKU Performance
 # -------------------------------------------------
-st.markdown("## 📊 SKU Pricing Metrics")
+if cols.get("sku"):
+    st.subheader("📦 Top SKUs by Sales")
 
-if sku_col:
-    pricing_df = sku_price_metrics(df)
-
-    st.dataframe(
-        pricing_df.head(20),
+    st.plotly_chart(
+        bar_top(
+            df,
+            cols["sku"],
+            cols["sales"],
+            title="Top SKUs",
+            top_n=15
+        ),
         use_container_width=True
     )
 
 # -------------------------------------------------
-# EXECUTIVE INSIGHTS
+# Brand Sales Trend
 # -------------------------------------------------
-st.markdown("## 🧠 Executive Insights")
+if cols.get("brand"):
+    st.subheader("📈 Brand Sales Trend")
 
-st.success(
-    """
-• A small number of brands contribute majority of revenue → **concentration risk**  
-• Several SKUs show high volume but low value → **pricing or discount issue**  
-• Low-volume & low-value SKUs indicate **portfolio rationalization opportunity**  
-"""
-)
+    selected_brand = st.selectbox(
+        "Select Brand",
+        sorted(df[cols["brand"]].dropna().unique())
+    )
+
+    brand_df = df[df[cols["brand"]] == selected_brand]
+
+    st.plotly_chart(
+        line_sales_trend(
+            brand_df,
+            cols["date"],
+            cols["sales"],
+            title=f"Sales Trend – {selected_brand}"
+        ),
+        use_container_width=True
+    )
 
 # -------------------------------------------------
-# Footer
+# Data Preview
 # -------------------------------------------------
-st.caption("Product & SKU Intelligence • FMCG Executive Dashboard • DS Group")
+with st.expander("📄 View Sample Data"):
+    st.dataframe(df.head(100), use_container_width=True)
