@@ -1,5 +1,4 @@
-# -------------------------------------------------
-# Page 1 : Executive Overview
+# pages/1_Executive_Overview.py
 # -------------------------------------------------
 
 import streamlit as st
@@ -22,78 +21,72 @@ st.set_page_config(
     layout="wide"
 )
 
-st.header("🧠 Executive Overview")
-st.caption("High-level FMCG business performance snapshot")
+st.title("🧠 Executive Overview")
+st.caption("CEO-level snapshot of FMCG business performance")
 
 st.divider()
 
 # -------------------------------------------------
-# Load Dataset
+# Load Data
 # -------------------------------------------------
 df = st.session_state.get("df")
 
 if df is None or df.empty:
-    st.warning("📤 Upload dataset or connect Snowflake first")
+    st.warning("📤 Upload dataset or connect Snowflake")
     st.stop()
 
 # -------------------------------------------------
-# Auto Detect Columns
+# Column Detection
 # -------------------------------------------------
 cols = auto_detect_columns(df)
 
-required_cols = ["date", "sales"]
-missing = [c for c in required_cols if not cols.get(c)]
+required = ["date", "sales"]
+missing = [c for c in required if not cols.get(c)]
 
 if missing:
-    st.error(f"❌ Required columns not detected: {', '.join(missing)}")
+    st.error(f"❌ Missing required columns: {', '.join(missing)}")
     st.stop()
 
 # -------------------------------------------------
-# SAFE PREPROCESS (INLINE – CLOUD SAFE)
+# Date Handling (SAFE)
 # -------------------------------------------------
-try:
-    df[cols["date"]] = pd.to_datetime(df[cols["date"]])
-except Exception:
-    st.error("❌ Date column cannot be parsed")
-    st.stop()
-
-df = df.sort_values(cols["date"])
+df = df.copy()
+df[cols["date"]] = pd.to_datetime(df[cols["date"]], errors="coerce")
+df = df.dropna(subset=[cols["date"]])
 
 # -------------------------------------------------
-# KPI SECTION
+# KPIs
 # -------------------------------------------------
 c1, c2, c3 = st.columns(3)
 
-with c1:
-    st.metric(
-        "💰 Total Sales",
-        f"{kpi_total_sales(df, cols['sales']):,.0f}"
-    )
+c1.metric(
+    "💰 Total Sales",
+    f"{kpi_total_sales(df, cols['sales']):,.0f}"
+)
 
-with c2:
-    st.metric(
-        "🧾 Orders",
-        f"{kpi_orders(df):,}"
-    )
+c2.metric(
+    "🧾 Orders",
+    f"{kpi_orders(df):,}"
+)
 
-with c3:
-    st.metric(
-        "📈 Avg Order Value",
-        f"{kpi_aov(df, cols['sales']):,.0f}"
-    )
+c3.metric(
+    "📊 Avg Order Value",
+    f"{kpi_aov(df, cols['sales']):,.0f}"
+)
 
 st.divider()
 
 # -------------------------------------------------
 # Sales Trend
 # -------------------------------------------------
-st.subheader("📊 Sales Trend")
+st.subheader("📈 Sales Trend")
 
 st.plotly_chart(
     line_sales_trend(
         df,
         cols["date"],
-        cols["sales"]
+        cols["sales"],
+        title="Historical Sales Trend"
     ),
     use_container_width=True
 )
@@ -109,12 +102,13 @@ if cols.get("brand"):
             df,
             cols["brand"],
             cols["sales"],
-            "Top Brands"
+            title="Top Brands by Sales",
+            top_n=10
         ),
         use_container_width=True
     )
 else:
-    st.info("ℹ️ Brand column not found — skipping brand analysis")
+    st.info("ℹ️ Brand column not detected")
 
 # -------------------------------------------------
 # Preview
