@@ -3,9 +3,9 @@
 # -------------------------------------------------
 
 import streamlit as st
+import pandas as pd
 
 from utils.column_detector import auto_detect_columns
-from utils.data_processing import preprocess
 from utils.metrics import (
     kpi_total_sales,
     kpi_orders,
@@ -42,19 +42,25 @@ if df is None or df.empty:
 cols = auto_detect_columns(df)
 
 required_cols = ["date", "sales"]
-
 missing = [c for c in required_cols if not cols.get(c)]
+
 if missing:
     st.error(f"❌ Required columns not detected: {', '.join(missing)}")
     st.stop()
 
 # -------------------------------------------------
-# Preprocess Data
+# SAFE PREPROCESS (INLINE – CLOUD SAFE)
 # -------------------------------------------------
-df = preprocess(df, cols["date"])
+try:
+    df[cols["date"]] = pd.to_datetime(df[cols["date"]])
+except Exception:
+    st.error("❌ Date column cannot be parsed")
+    st.stop()
+
+df = df.sort_values(cols["date"])
 
 # -------------------------------------------------
-# KPI Section
+# KPI SECTION
 # -------------------------------------------------
 c1, c2, c3 = st.columns(3)
 
@@ -93,7 +99,7 @@ st.plotly_chart(
 )
 
 # -------------------------------------------------
-# Brand Performance (Optional)
+# Brand Performance
 # -------------------------------------------------
 if cols.get("brand"):
     st.subheader("🏷️ Top Brands")
@@ -111,7 +117,7 @@ else:
     st.info("ℹ️ Brand column not found — skipping brand analysis")
 
 # -------------------------------------------------
-# Data Preview
+# Preview
 # -------------------------------------------------
 with st.expander("📄 Data Preview"):
     st.dataframe(df.head(50), use_container_width=True)
