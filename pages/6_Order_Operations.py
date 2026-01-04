@@ -1,14 +1,12 @@
-# pages/6_Pricing_Discount_Analysis.py
+# pages/6_Pricing_Analysis.py
 # -------------------------------------------------
 # Pricing & Discount Analysis
 # -------------------------------------------------
 
 import streamlit as st
-import pandas as pd
-
 from utils.column_detector import auto_detect_columns
-from utils.metrics import kpi_total_sales
-from utils.visualizations import bar_top
+from utils.pricing_metrics import *
+from utils.visualizations import *
 
 # -------------------------------------------------
 # Page Config
@@ -30,7 +28,7 @@ st.divider()
 df = st.session_state.get("df")
 
 if df is None or df.empty:
-    st.warning("📤 Please upload dataset or connect Snowflake.")
+    st.warning("📤 Upload dataset or connect Snowflake first.")
     st.stop()
 
 # -------------------------------------------------
@@ -38,105 +36,87 @@ if df is None or df.empty:
 # -------------------------------------------------
 cols = auto_detect_columns(df)
 
-required = ["sales", "price"]
-missing = [c for c in required if not cols.get(c)]
+price_col = cols.get("price")
+sales_col = cols.get("sales")
+discount_col = cols.get("discount")
+date_col = cols.get("date")
 
-if missing:
-    st.error(f"❌ Required columns missing: {missing}")
+# -------------------------------------------------
+# Validation (Backward Compatible)
+# -------------------------------------------------
+if not price_col:
+    st.warning("⚠ Price column not detected — pricing analysis unavailable.")
     st.stop()
 
-discount_col = cols.get("discount")
-product_col = cols.get("product") or cols.get("sku") or cols.get("brand")
+if not sales_col:
+    st.warning("⚠ Sales column not detected.")
+    st.stop()
 
 # -------------------------------------------------
-# Base KPIs
+# KPIs
 # -------------------------------------------------
+st.subheader("📊 Pricing KPIs")
+
 k1, k2, k3 = st.columns(3)
 
 k1.metric(
-    "💰 Total Sales",
-    f"{kpi_total_sales(df, cols['sales']):,.0f}"
-)
-
-k2.metric(
-    "🏷 Avg Price",
-    f"{df[cols['price']].mean():,.2f}"
+    "Average Selling Price",
+    f"₹{avg_price(df, price_col):,.2f}"
 )
 
 if discount_col:
-    k3.metric(
-        "🔻 Avg Discount %",
-        f"{df[discount_col].mean():.2f}%"
+    k2.metric(
+        "Average Discount %",
+        f"{avg_discount(df, discount_col):.2f}%"
     )
 else:
-    k3.metric("🔻 Avg Discount %", "N/A")
+    k2.metric("Average Discount %", "N/A")
 
-st.divider()
-
-# -------------------------------------------------
-# Discount Impact Analysis
-# -------------------------------------------------
-if discount_col:
-    st.subheader("📊 Discount vs Sales Impact")
-
-    discount_bins = pd.cut(
-        df[discount_col],
-        bins=[-1, 0, 5, 10, 20, 50, 100],
-        labels=["0%", "0–5%", "5–10%", "10–20%", "20–50%", "50%+"]
-    )
-
-    discount_summary = (
-        df.assign(Discount_Band=discount_bins)
-        .groupby("Discount_Band", observed=True)[cols["sales"]]
-        .sum()
-        .reset_index()
-    )
-
-    st.bar_chart(
-        discount_summary.set_index("Discount_Band"),
-        use_container_width=True
-    )
-
-    st.info(
-        "📌 **Insight:** Excessive discounting may increase volume but can "
-        "negatively impact profitability."
-    )
-
-else:
-    st.warning("⚠ Discount column not detected. Discount analysis skipped.")
-
-st.divider()
-
-# -------------------------------------------------
-# Top Products by Price or Sales
-# -------------------------------------------------
-if product_col:
-    st.subheader("🏆 Top Products by Sales Value")
-
-    st.plotly_chart(
-        bar_top(
-            df,
-            product_col,
-            cols["sales"],
-            title="Top Products by Sales",
-            top_n=15
-        ),
-        use_container_width=True
-    )
-else:
-    st.warning("⚠ Product / SKU / Brand column not found.")
+k3.metric(
+    "Revenue Impact",
+    f"₹{revenue_impact(df, price_col, sales_col):,.0f}"
+)
 
 # -------------------------------------------------
 # Price Distribution
 # -------------------------------------------------
 st.subheader("📈 Price Distribution")
 
-st.line_chart(
-    df[cols["price"]].value_counts().sort_index(),
+st.plotly_chart(
+    price_distribution(df, price_col),
     use_container_width=True
 )
 
-st.caption(
-    "📌 Distribution highlights pricing spread and potential clustering "
-    "around key price points."
+# -------------------------------------------------
+# Discount Impact
+# -------------------------------------------------
+if discount_col:
+    st.subheader("🎯 Discount vs Sales Impact")
+
+    st.plotly_chart(
+        discount_vs_sales(df, discount_col, sales_col),
+        use_container_width=True
+    )
+else:
+    st.info("ℹ Discount column not available — skipping discount impact analysis.")
+
+# -------------------------------------------------
+# Trend Analysis
+# -------------------------------------------------
+if date_col:
+    st.subheader("📆 Price Trend Over Time")
+
+    st.plotly_chart(
+        price_trend(df, date_col, price_col),
+        use_container_width=True
+    )
+
+# -------------------------------------------------
+# Business Insights
+# -------------------------------------------------
+st.info(
+    "📌 **Insights:**\n\n"
+    "- Detect price sensitivity and discount dependency\n"
+    "- Optimize pricing strategy across products & outlets\n"
+    "- Prevent margin erosion due to excessive discounting"
 )
