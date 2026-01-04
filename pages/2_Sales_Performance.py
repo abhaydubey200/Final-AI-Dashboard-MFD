@@ -1,203 +1,138 @@
+# pages/2_Sales_Performance.py
+# -------------------------------------------------
+# Sales Performance Dashboard
+# -------------------------------------------------
+
 import streamlit as st
 import pandas as pd
 
-from config import SESSION_DF_KEY, CURRENCY_SYMBOL
 from utils.column_detector import auto_detect_columns
 from utils.visualizations import (
     line_sales_trend,
     bar_top,
-    scatter_price_qty,
-    pie_chart,
+    heatmap
 )
-from utils.data_processing import preprocess
+from utils.metrics import (
+    kpi_total_sales,
+    kpi_orders,
+    kpi_aov
+)
 
-# -------------------------------------------------
-# Page Config
-# -------------------------------------------------
 st.set_page_config(
-    page_title="Sales Performance | FMCG Intelligence",
-    layout="wide",
+    page_title="Sales Performance",
+    page_icon="📊",
+    layout="wide"
 )
+
+st.title("📊 Sales Performance Analysis")
+st.caption("In-depth sales trends, contribution & performance drivers")
+
+st.divider()
 
 # -------------------------------------------------
 # Load Data
 # -------------------------------------------------
-df = st.session_state.get(SESSION_DF_KEY)
+df = st.session_state.get("df")
 
 if df is None or df.empty:
-    st.warning("📥 Please upload data or connect Snowflake first.")
+    st.warning("📤 Please upload dataset or connect Snowflake first")
     st.stop()
 
 # -------------------------------------------------
-# Column Detection
+# Auto Detect Columns
 # -------------------------------------------------
 cols = auto_detect_columns(df)
 
-date_col = cols.get("date")
-sales_col = cols.get("sales")
-qty_col = cols.get("quantity")
-brand_col = cols.get("brand")
-sku_col = cols.get("sku")
-outlet_col = cols.get("outlet")
+required = ["date", "sales"]
+missing = [c for c in required if not cols.get(c)]
+
+if missing:
+    st.error(f"❌ Required columns missing: {', '.join(missing)}")
+    st.stop()
 
 # -------------------------------------------------
-# Preprocess
+# Date Handling (INLINE & SAFE)
 # -------------------------------------------------
-df = preprocess(df, date_col)
+df = df.copy()
+df[cols["date"]] = pd.to_datetime(df[cols["date"]], errors="coerce")
+df = df.dropna(subset=[cols["date"]])
 
 # -------------------------------------------------
-# Header
+# KPIs
 # -------------------------------------------------
-st.title("📈 Sales Performance Analysis")
-st.markdown(
-    "Detailed breakdown of **sales trends, product contribution, and outlet performance**."
+k1, k2, k3 = st.columns(3)
+
+k1.metric(
+    "💰 Total Sales",
+    f"{kpi_total_sales(df, cols['sales']):,.0f}"
+)
+
+k2.metric(
+    "🧾 Total Orders",
+    f"{kpi_orders(df):,}"
+)
+
+k3.metric(
+    "📊 Avg Order Value",
+    f"{kpi_aov(df, cols['sales']):,.0f}"
 )
 
 st.divider()
 
 # -------------------------------------------------
-# FILTERS
+# Time Trend
 # -------------------------------------------------
-with st.expander("🎯 Filters", expanded=False):
-    f1, f2, f3 = st.columns(3)
+st.subheader("📈 Sales Trend Over Time")
 
-    with f1:
-        if brand_col:
-            brands = st.multiselect(
-                "Brand",
-                sorted(df[brand_col].dropna().unique())
-            )
-            if brands:
-                df = df[df[brand_col].isin(brands)]
-
-    with f2:
-        if outlet_col:
-            outlets = st.multiselect(
-                "Outlet",
-                sorted(df[outlet_col].dropna().unique())
-            )
-            if outlets:
-                df = df[df[outlet_col].isin(outlets)]
-
-    with f3:
-        if "Year" in df.columns:
-            years = st.multiselect(
-                "Year",
-                sorted(df["Year"].unique())
-            )
-            if years:
-                df = df[df["Year"].isin(years)]
+st.plotly_chart(
+    line_sales_trend(
+        df,
+        cols["date"],
+        cols["sales"],
+        title="Sales Trend"
+    ),
+    use_container_width=True
+)
 
 # -------------------------------------------------
-# SALES TREND
+# Category / Brand Contribution
 # -------------------------------------------------
-st.markdown("## 📊 Sales Trend")
+if cols.get("brand"):
+    st.subheader("🏷️ Brand Contribution")
 
-trend_fig = line_sales_trend(df, date_col, sales_col)
-st.plotly_chart(trend_fig, use_container_width=True)
-
-# -------------------------------------------------
-# CONTRIBUTION ANALYSIS
-# -------------------------------------------------
-st.markdown("## 🧩 Contribution Analysis")
-
-c1, c2 = st.columns(2)
-
-with c1:
-    if brand_col:
-        st.plotly_chart(
-            bar_top(
-                df,
-                brand_col,
-                sales_col,
-                title="Top Brands by Sales"
-            ),
-            use_container_width=True
-        )
-
-with c2:
-    if sku_col:
-        st.plotly_chart(
-            bar_top(
-                df,
-                sku_col,
-                sales_col,
-                title="Top SKUs by Sales"
-            ),
-            use_container_width=True
-        )
-
-# -------------------------------------------------
-# OUTLET PERFORMANCE
-# -------------------------------------------------
-st.markdown("## 🏪 Outlet Performance")
-
-o1, o2 = st.columns(2)
-
-with o1:
-    if outlet_col:
-        st.plotly_chart(
-            bar_top(
-                df,
-                outlet_col,
-                sales_col,
-                title="Top Outlets by Sales"
-            ),
-            use_container_width=True
-        )
-
-with o2:
-    if outlet_col:
-        outlet_share = (
-            df.groupby(outlet_col, as_index=False)[sales_col]
-            .sum()
-            .sort_values(sales_col, ascending=False)
-            .head(10)
-        )
-        st.plotly_chart(
-            pie_chart(
-                outlet_share,
-                outlet_col,
-                sales_col,
-                title="Outlet Sales Share (Top 10)"
-            ),
-            use_container_width=True
-        )
-
-# -------------------------------------------------
-# PRICE vs QUANTITY INSIGHTS
-# -------------------------------------------------
-st.markdown("## 💰 Price vs Quantity Behavior")
-
-if sales_col and qty_col:
     st.plotly_chart(
-        scatter_price_qty(
+        bar_top(
             df,
-            sales_col,
-            qty_col,
-            title="Sales Value vs Quantity"
+            cols["brand"],
+            cols["sales"],
+            title="Top Brands by Sales",
+            top_n=10
         ),
         use_container_width=True
     )
-else:
-    st.info("Quantity or Sales column not available for scatter analysis.")
 
 # -------------------------------------------------
-# EXECUTIVE INSIGHTS
+# City / State Heatmap
 # -------------------------------------------------
-st.markdown("## 🧠 Key Business Insights")
+geo_x = cols.get("state") or cols.get("city")
+geo_y = cols.get("brand")
 
-insight_1 = "Sales momentum is driven by a small set of top-performing brands and outlets."
-insight_2 = "Long-tail SKUs contribute marginally and may require rationalization."
-insight_3 = "Higher quantity does not always correlate with higher sales value."
+if geo_x and geo_y:
+    st.subheader("🌍 Geographic Performance Heatmap")
 
-st.success(f"""
-• {insight_1}  
-• {insight_2}  
-• {insight_3}
-""")
+    st.plotly_chart(
+        heatmap(
+            df,
+            geo_x,
+            geo_y,
+            cols["sales"],
+            title="Sales Distribution Heatmap"
+        ),
+        use_container_width=True
+    )
 
 # -------------------------------------------------
-# Footer
+# Data Preview
 # -------------------------------------------------
-st.caption("Sales Performance • FMCG Executive Dashboard • DS Group")
+with st.expander("📄 View Raw Data"):
+    st.dataframe(df.head(100), use_container_width=True)
