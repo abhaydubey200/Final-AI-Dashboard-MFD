@@ -1,57 +1,170 @@
 import streamlit as st
 import plotly.express as px
-from utils.risk_engine import outlet_risk_score
+import pandas as pd
+
+from config import SESSION_DF_KEY
+from utils.segmentation import (
+    prepare_outlet_features,
+    segment_outlets
+)
 from utils.column_detector import auto_detect_columns
 
-st.markdown("<div class='page-title'>🏭 Outlet Risk Intelligence</div>", unsafe_allow_html=True)
-st.markdown("<div class='page-subtitle'>Churn & Risk Monitoring</div>", unsafe_allow_html=True)
+# -------------------------------------------------
+# Page Config
+# -------------------------------------------------
+st.set_page_config(
+    page_title="Outlet Segmentation",
+    layout="wide"
+)
 
-df = st.session_state.get("df")
-if df is None:
-    st.warning("Upload data or connect Snowflake")
+# -------------------------------------------------
+# Load Data
+# -------------------------------------------------
+df = st.session_state.get(SESSION_DF_KEY)
+
+if df is None or df.empty:
+    st.warning("📥 Upload dataset or connect Snowflake first.")
     st.stop()
 
-cols = auto_detect_columns(df)
-
-outlet_col = cols.get("outlet")
-date_col = cols.get("date")
-sales_col = cols.get("sales")
-
-if not outlet_col or not date_col or not sales_col:
-    st.error("Required columns not detected")
-    st.stop()
-
-risk_df = outlet_risk_score(df, outlet_col, date_col, sales_col)
-
-# ----------------------------
-# KPI SNAPSHOT
-# ----------------------------
-c1, c2, c3 = st.columns(3)
-
-c1.metric("High Risk Outlets", (risk_df["Risk_Level"] == "High").sum())
-c2.metric("Medium Risk Outlets", (risk_df["Risk_Level"] == "Medium").sum())
-c3.metric("Low Risk Outlets", (risk_df["Risk_Level"] == "Low").sum())
+# -------------------------------------------------
+# Header
+# -------------------------------------------------
+st.title("🏪 Outlet Segmentation & Risk Profiling")
+st.markdown(
+    "AI-driven outlet clustering to optimize **distribution strategy, schemes, "
+    "credit policy, and field-force focus**."
+)
 
 st.divider()
 
-# ----------------------------
-# RISK DISTRIBUTION
-# ----------------------------
-fig = px.bar(
-    risk_df,
-    x="Risk_Level",
-    title="Outlet Risk Distribution",
-    color="Risk_Level",
-    color_discrete_map={
-        "High": "red",
-        "Medium": "orange",
-        "Low": "green"
-    }
-)
-st.plotly_chart(fig, use_container_width=True)
+# -------------------------------------------------
+# Segmentation Controls
+# -------------------------------------------------
+with st.expander("⚙ Segmentation Configuration", expanded=True):
 
-# ----------------------------
-# RISK TABLE
-# ----------------------------
-st.subheader("📋 Outlet Risk Details")
-st.dataframe(risk_df, use_container_width=True)
+    clusters = st.slider(
+        "Number of Outlet Segments",
+        min_value=2,
+        max_value=6,
+        value=3
+    )
+
+# -------------------------------------------------
+# Prepare Outlet Features
+# -------------------------------------------------
+outlet_df = prepare_outlet_features(df)
+
+if outlet_df.empty:
+    st.error("❌ Unable to prepare outlet-level features.")
+    st.stop()
+
+# -------------------------------------------------
+# Apply Segmentation
+# -------------------------------------------------
+segmented_df = segment_outlets(outlet_df, n_clusters=clusters)
+
+# -------------------------------------------------
+# Risk Scoring (NEW – Executive Requirement)
+# -------------------------------------------------
+if "Total_Sales" in segmented_df.columns:
+    segmented_df["Risk_Score"] = pd.qcut(
+        segmented_df["Total_Sales"],
+        q=3,
+        labels=["High Risk", "Medium Risk", "Low Risk"]
+    )
+else:
+    segmented_df["Risk_Score"] = "Unknown"
+
+# -------------------------------------------------
+# KPIs
+# -------------------------------------------------
+st.markdown("## 📌 Segmentation KPIs")
+
+k1, k2, k3 = st.columns(3)
+
+k1.metric(
+    "Total Outlets",
+    segmented_df.shape[0]
+)
+
+k2.metric(
+    "High Value Outlets",
+    (segmented_df["Segment_Label"] == "High Value").sum()
+)
+
+k3.metric(
+    "High Risk Outlets",
+    (segmented_df["Risk_Score"] == "High Risk").sum()
+)
+
+st.divider()
+
+# -------------------------------------------------
+# Segmented Table
+# -------------------------------------------------
+st.markdown("## 📋 Outlet Segmentation Table")
+
+st.dataframe(
+    segmented_df.sort_values(
+        by="Total_Sales" if "Total_Sales" in segmented_df.columns else segmented_df.columns[0],
+        ascending=False
+    ),
+    use_container_width=True
+)
+
+# -------------------------------------------------
+# Visualization
+# -------------------------------------------------
+numeric_cols = segmented_df.select_dtypes(include="number").columns.tolist()
+
+if len(numeric_cols) >= 2:
+    st.markdown("## 📊 Outlet Cluster Visualization")
+
+    fig = px.scatter(
+        segmented_df,
+        x=numeric_cols[0],
+        y=numeric_cols[1],
+        color="Segment_Label",
+        symbol="Risk_Score",
+        hover_data=[segmented_df.columns[0]],
+        title="Outlet Segments with Risk Overlay"
+    )
+
+    fig.update_layout(template="plotly_white")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+# -------------------------------------------------
+# Segment Summary
+# -------------------------------------------------
+st.markdown("## 📈 Segment Performance Summary")
+
+summary = (
+    segmented_df
+    .groupby("Segment_Label")[numeric_cols]
+    .mean()
+    .round(2)
+    .reset_index()
+)
+
+st.dataframe(summary, use_container_width=True)
+
+# -------------------------------------------------
+# Executive Insight
+# -------------------------------------------------
+st.success(
+    """
+🧠 **Executive Insight**
+
+• Focus schemes & credit on **High Value / Medium Risk** outlets  
+• Deploy field-force aggressively on **High Risk outlets**  
+• Rationalize effort on consistently **Low Value outlets**
+
+This segmentation directly improves **ROI per outlet**.
+"""
+)
+
+# -------------------------------------------------
+# Footer
+# -------------------------------------------------
+st.caption("Outlet Intelligence Engine • DS Group FMCG Analytics Platform")
