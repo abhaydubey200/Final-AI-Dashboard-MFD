@@ -1,176 +1,201 @@
-# pages/7_Sales_Forecasting.py
-# -------------------------------------------------
-# Sales Forecasting (Time-Series)
-# -------------------------------------------------
-
 import streamlit as st
+import pandas as pd
+import numpy as np
 import plotly.express as px
+
+from config import (
+    SESSION_DF_KEY,
+    DEFAULT_FORECAST_MONTHS,
+    MAX_FORECAST_MONTHS,
+    ENABLE_PROPHET
+)
 
 from utils.column_detector import auto_detect_columns
 from utils.forecasting import prepare_time_series, forecast_sales
 
 # -------------------------------------------------
-# Page Configuration
+# Page Config
 # -------------------------------------------------
 st.set_page_config(
-    page_title="Sales Forecasting | DS Group",
-    page_icon="🔮",
+    page_title="Sales Forecasting",
     layout="wide"
 )
 
-st.title("🔮 Sales Forecasting")
-st.caption(
-    "Predict future sales trends to support "
-    "**inventory planning, budgeting, and growth strategy**"
+# -------------------------------------------------
+# Load Data
+# -------------------------------------------------
+df = st.session_state.get(SESSION_DF_KEY)
+
+if df is None or df.empty:
+    st.warning("📥 Upload dataset or connect Snowflake first.")
+    st.stop()
+
+# -------------------------------------------------
+# Detect Columns
+# -------------------------------------------------
+cols = auto_detect_columns(df)
+date_col = cols.get("date")
+sales_col = cols.get("sales")
+
+if not date_col or not sales_col:
+    st.error("❌ Date or Sales column could not be detected.")
+    st.stop()
+
+# -------------------------------------------------
+# Header
+# -------------------------------------------------
+st.title("📈 Sales Forecasting & Demand Planning")
+st.markdown(
+    "AI-driven **monthly sales forecasting** for inventory planning, "
+    "budgeting, and leadership decision-making."
 )
 
 st.divider()
 
 # -------------------------------------------------
-# Load Dataset (Upload / Snowflake)
+# Filters
 # -------------------------------------------------
-df = st.session_state.get("df")
+with st.expander("⚙ Forecast Configuration", expanded=True):
 
-if df is None or df.empty:
-    st.warning("📤 Upload dataset or connect Snowflake to continue.")
-    st.stop()
+    c1, c2 = st.columns(2)
 
-# -------------------------------------------------
-# Auto Detect Columns
-# -------------------------------------------------
-cols = auto_detect_columns(df)
+    with c1:
+        horizon = st.slider(
+            "Forecast Horizon (Months)",
+            min_value=3,
+            max_value=MAX_FORECAST_MONTHS,
+            value=DEFAULT_FORECAST_MONTHS
+        )
 
-date_col = cols.get("date")
-sales_col = cols.get("sales")
-
-# -------------------------------------------------
-# Validation
-# -------------------------------------------------
-if not date_col or not sales_col:
-    st.error(
-        "❌ Required columns not detected.\n\n"
-        f"- Date column: `{date_col}`\n"
-        f"- Sales column: `{sales_col}`"
-    )
-    st.stop()
+    with c2:
+        freq = st.selectbox(
+            "Forecast Frequency",
+            options=["M"],
+            format_func=lambda x: "Monthly"
+        )
 
 # -------------------------------------------------
 # Prepare Time Series
 # -------------------------------------------------
-try:
-    ts_df = prepare_time_series(df, date_col, sales_col)
-except Exception as e:
-    st.error("❌ Failed to prepare time-series data.")
-    st.exception(e)
+ts_df = prepare_time_series(
+    df,
+    date_col=date_col,
+    sales_col=sales_col,
+    freq=freq
+)
+
+if ts_df.empty or len(ts_df) < 6:
+    st.error("❌ Not enough historical data for forecasting.")
     st.stop()
 
 # -------------------------------------------------
-# Historical Sales Trend
+# Forecast
 # -------------------------------------------------
-st.subheader("📊 Historical Sales Trend")
-
-fig_hist = px.line(
+forecast_df = forecast_sales(
     ts_df,
-    x="Date",
-    y="Sales",
-    markers=True,
-    title="Historical Sales Performance"
-)
-
-fig_hist.update_layout(
-    xaxis_title="Date",
-    yaxis_title="Sales",
-    template="plotly_white"
-)
-
-st.plotly_chart(fig_hist, use_container_width=True)
-
-# -------------------------------------------------
-# Forecast Controls
-# -------------------------------------------------
-st.subheader("🔮 Forecast Settings")
-
-forecast_months = st.slider(
-    "Forecast Duration (Months)",
-    min_value=3,
-    max_value=24,
-    value=12,
-    help="Select how many months into the future to forecast"
+    periods=horizon
 )
 
 # -------------------------------------------------
-# Forecast Generation
+# Combine Actual + Forecast
 # -------------------------------------------------
-try:
-    forecast_df = forecast_sales(ts_df, periods=forecast_months)
-except Exception as e:
-    st.error("❌ Forecasting failed. Please check data quality.")
-    st.exception(e)
-    st.stop()
-
-# -------------------------------------------------
-# Forecast Plot
-# -------------------------------------------------
-st.subheader("📈 Forecasted Sales")
-
-fig_forecast = px.line(
-    forecast_df,
-    x="Date",
-    y="Sales",
-    markers=True,
-    title="Forecasted Sales Trend"
-)
-
-fig_forecast.update_layout(
-    xaxis_title="Date",
-    yaxis_title="Forecasted Sales",
-    template="plotly_white"
-)
-
-st.plotly_chart(fig_forecast, use_container_width=True)
-
-# -------------------------------------------------
-# Actual vs Forecast Comparison
-# -------------------------------------------------
-st.subheader("📊 Actual vs Forecast Comparison")
-
-actual_df = ts_df.copy()
+actual_df = ts_df[["Date", "Sales"]].copy()
 actual_df["Type"] = "Actual"
 
-forecast_plot_df = forecast_df.copy()
-forecast_plot_df["Type"] = "Forecast"
+forecast_df["Type"] = "Forecast"
 
-comparison_df = actual_df._append(
-    forecast_plot_df,
+plot_df = pd.concat(
+    [actual_df, forecast_df],
     ignore_index=True
 )
 
-fig_compare = px.line(
-    comparison_df,
+# -------------------------------------------------
+# KPIs
+# -------------------------------------------------
+st.markdown("## 📌 Forecast KPIs")
+
+k1, k2, k3 = st.columns(3)
+
+k1.metric(
+    "📅 Forecast Period",
+    f"{horizon} Months"
+)
+
+k2.metric(
+    "💰 Total Forecast Sales",
+    f"{forecast_df['Sales'].sum():,.0f}"
+)
+
+k3.metric(
+    "📊 Avg Monthly Sales",
+    f"{forecast_df['Sales'].mean():,.0f}"
+)
+
+st.divider()
+
+# -------------------------------------------------
+# Forecast Chart
+# -------------------------------------------------
+st.markdown("## 📉 Actual vs Forecast Trend")
+
+fig = px.line(
+    plot_df,
     x="Date",
     y="Sales",
     color="Type",
     markers=True,
-    title="Actual vs Forecast Sales"
+    title="Sales Forecast (Monthly)"
 )
 
-fig_compare.update_layout(
-    xaxis_title="Date",
+fig.update_layout(
+    xaxis_title="Month",
     yaxis_title="Sales",
     template="plotly_white"
 )
 
-st.plotly_chart(fig_compare, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
 
 # -------------------------------------------------
-# Business Insights
+# Forecast Table
 # -------------------------------------------------
-st.info(
-    "📌 **How to use this forecast:**\n\n"
-    "- 📦 Plan inventory and warehouse capacity\n"
-    "- 💰 Improve budget and cash-flow forecasting\n"
-    "- 🏭 Align production with future demand\n"
-    "- 🎯 Support strategic sales targets"
+st.markdown("## 📋 Forecast Output")
+
+table_df = forecast_df.copy()
+table_df["Month"] = table_df["Date"].dt.strftime("%b %Y")
+table_df["Forecast_Sales"] = table_df["Sales"].round(0)
+
+st.dataframe(
+    table_df[["Month", "Forecast_Sales"]],
+    use_container_width=True
 )
 
-st.success("✅ Sales forecast generated successfully")
+# -------------------------------------------------
+# Download
+# -------------------------------------------------
+csv = table_df.to_csv(index=False).encode("utf-8")
+
+st.download_button(
+    "⬇ Download Forecast (CSV)",
+    data=csv,
+    file_name="sales_forecast.csv",
+    mime="text/csv"
+)
+
+# -------------------------------------------------
+# Executive Insight
+# -------------------------------------------------
+st.success(
+    """
+✅ Forecast ready for:
+• Inventory & production planning  
+• Budget allocation  
+• Growth scenario simulation  
+
+Model used: **Random Forest (stable & explainable)**
+"""
+)
+
+# -------------------------------------------------
+# Footer
+# -------------------------------------------------
+st.caption("Sales Forecasting Engine • DS Group FMCG Intelligence Platform")
