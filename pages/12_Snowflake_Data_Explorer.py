@@ -1,47 +1,56 @@
 import streamlit as st
 import pandas as pd
-
 from utils.snowflake_connector import get_snowflake_connection
 from config import SESSION_DF_KEY
 
 st.header("❄️ Snowflake Data Explorer")
-st.caption("Browse databases, schemas & tables and load data into the application")
+st.caption("Browse databases, schemas & tables and load data safely")
 
-conn = get_snowflake_connection()
-if conn is None:
-    st.warning("🔐 Connect Snowflake from **Upload Dataset** page first")
+# -------------------------------------------------
+# GUARD
+# -------------------------------------------------
+if "snowflake_config" not in st.session_state:
+    st.warning("🔐 Login via **Upload Dataset → Snowflake** first")
     st.stop()
 
+conn = get_snowflake_connection()
+cur = conn.cursor()
 
-@st.cache_data(show_spinner=False)
-def fetch_list(query):
-    cur = conn.cursor()
-    cur.execute(query)
-    return [r[0] for r in cur.fetchall() if r[0] is not None]
+# -------------------------------------------------
+# HELPERS (NO CACHE)
+# -------------------------------------------------
+def list_first_column(sql):
+    cur.execute(sql)
+    return [row[0] for row in cur.fetchall() if row[0]]
 
+def fetch_table_preview(db, schema, table, limit=500):
+    sql = f'SELECT * FROM "{db}"."{schema}"."{table}" LIMIT {limit}'
+    cur.execute(sql)
+    rows = cur.fetchall()
+    cols = [c[0] for c in cur.description]
+    return pd.DataFrame(rows, columns=cols)
 
-@st.cache_data(show_spinner=False)
-def fetch_preview(db, schema, table):
-    q = f'SELECT * FROM "{db}"."{schema}"."{table}" LIMIT 500'
-    return pd.read_sql(q, conn)
+# -------------------------------------------------
+# UI FLOW
+# -------------------------------------------------
+databases = list_first_column("SHOW DATABASES")
+db = st.selectbox("Database", databases)
 
-
-# ------------------ UI ------------------
-
-dbs = fetch_list("SHOW DATABASES")
-db = st.selectbox("Database", dbs)
-
-schemas = fetch_list(f'SHOW SCHEMAS IN DATABASE "{db}"')
+schemas = list_first_column(f'SHOW SCHEMAS IN DATABASE "{db}"')
 schema = st.selectbox("Schema", schemas)
 
-tables = fetch_list(f'SHOW TABLES IN SCHEMA "{db}"."{schema}"')
+tables = list_first_column(f'SHOW TABLES IN SCHEMA "{db}"."{schema}"')
 table = st.selectbox("Table", tables)
 
-if st.button("👁 Preview Data"):
-    df_preview = fetch_preview(db, schema, table)
-    st.dataframe(df_preview, width="stretch")
-
-    if st.button("📥 Load data into application"):
-        st.session_state[SESSION_DF_KEY] = df_preview
-        st.session_state["data_source"] = "Snowflake"
-        st.success("✅ Data loaded successfully into application")
+# -------------------------------------------------
+# LOAD DATA
+# -------------------------------------------------
+if st.button("📥 Load Data into Application"):
+    try:
+        df = fetch_table_preview(db, schema, table)
+        st.session_state[SESSION_DF_KEY] = df
+        st.session_state["data_source"] = f"Snowflake: {db}.{schema}.{table}"
+        st.success(f"✅ Loaded {df.shape[0]:,} rows")
+        st.dataframe(df, width="stretch")
+    except Exception as e:
+        st.error(f"❌ Failed to load data: {e}")
