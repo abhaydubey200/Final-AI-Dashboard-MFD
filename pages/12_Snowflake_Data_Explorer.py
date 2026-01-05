@@ -1,137 +1,74 @@
+# --------------------------------------------------
+#  Snowflake Data Explorer 
+# --------------------------------------------------
+
 import streamlit as st
 import pandas as pd
 
-from utils.snowflake_connector import get_snowflake_connection
-from utils.snowflake_metadata import (
-    list_databases,
-    list_schemas,
-    list_tables,
-    fetch_table_sample,
-    fetch_table_columns
+st.set_page_config(page_title="Snowflake Explorer", layout="wide")
+
+st.header("❄️ Snowflake Data Explorer")
+st.caption(
+    "Explore enterprise Snowflake data securely. "
+    "This integration is optional and will not break the app."
 )
 
-# -------------------------------------------------
-# Page Config
-# -------------------------------------------------
-st.set_page_config(
-    page_title="Snowflake Data Explorer",
-    layout="wide"
-)
+# --------------------------------------------------
+# Enable / Disable Snowflake
+# --------------------------------------------------
+use_snowflake = st.toggle("Enable Snowflake Integration", value=False)
 
-# -------------------------------------------------
-# Header
-# -------------------------------------------------
-st.title("❄️ Snowflake Data Explorer")
-st.markdown(
-    "Securely browse Snowflake databases, schemas, and tables with live previews."
-)
-
-st.divider()
-
-# -------------------------------------------------
-# Connect to Snowflake
-# -------------------------------------------------
-try:
-    conn = get_snowflake_connection()
-except Exception as e:
-    st.error(f"❌ Snowflake connection failed: {e}")
+if not use_snowflake:
+    st.info(
+        "Snowflake is disabled.\n\n"
+        "Turn this ON only if credentials and connector are configured."
+    )
     st.stop()
 
-# -------------------------------------------------
-# Database Selector
-# -------------------------------------------------
-databases = list_databases(conn)
-
-db = st.selectbox(
-    "📂 Select Database",
-    databases
-)
-
-# -------------------------------------------------
-# Schema Selector
-# -------------------------------------------------
-schemas = list_schemas(conn, db)
-
-schema = st.selectbox(
-    "🗂 Select Schema",
-    schemas
-)
-
-# -------------------------------------------------
-# Table Selector
-# -------------------------------------------------
-tables = list_tables(conn, db, schema)
-
-table = st.selectbox(
-    "📄 Select Table",
-    tables
-)
-
-st.divider()
-
-# -------------------------------------------------
-# Metadata Section
-# -------------------------------------------------
-st.subheader("📑 Table Metadata")
-
-col_meta = fetch_table_columns(conn, db, schema, table)
-
-st.dataframe(
-    col_meta,
-    use_container_width=True
-)
-
-# -------------------------------------------------
-# Data Preview Section
-# -------------------------------------------------
-st.subheader("🔍 Data Preview")
-
-row_limit = st.slider(
-    "Rows to Preview",
-    min_value=10,
-    max_value=500,
-    value=50,
-    step=10
-)
-
-sample_df = fetch_table_sample(
-    conn,
-    db,
-    schema,
-    table,
-    row_limit
-)
-
-st.dataframe(
-    sample_df,
-    use_container_width=True
-)
-
-# -------------------------------------------------
-# Session Export
-# -------------------------------------------------
-st.divider()
-st.subheader("📥 Load into Analytics Session")
-
-if st.button("➡ Use This Table for Dashboard"):
-    st.session_state["df"] = sample_df
-    st.success(
-        "✅ Table loaded into session. Navigate to analytics pages."
+# --------------------------------------------------
+# SAFE IMPORT (NO CRASH EVER)
+# --------------------------------------------------
+try:
+    from utils.snowflake_connector import get_snowflake_connection
+except Exception:
+    st.error(
+        "Snowflake connector not found.\n\n"
+        "Missing file: utils/snowflake_connector.py"
     )
+    st.stop()
 
-# -------------------------------------------------
-# Business Note
-# -------------------------------------------------
-st.info(
-    """
-🔐 **Read-Only Mode**
-- No updates
-- No deletes
-- Safe for production Snowflake environments
-"""
+# --------------------------------------------------
+# CONNECT
+# --------------------------------------------------
+try:
+    conn = get_snowflake_connection()
+    st.success("Connected to Snowflake")
+except Exception as e:
+    st.error("Snowflake connection failed")
+    st.exception(e)
+    st.stop()
+
+# --------------------------------------------------
+# QUERY UI
+# --------------------------------------------------
+st.subheader("🧠 SQL Query Editor")
+
+query = st.text_area(
+    "Write SQL Query",
+    value="SELECT CURRENT_DATABASE(), CURRENT_SCHEMA();",
+    height=160
 )
 
-# -------------------------------------------------
-# Footer
-# -------------------------------------------------
-st.caption("Snowflake Explorer • DS Group FMCG Intelligence Platform")
+run = st.button("▶ Run Query")
+
+if run:
+    try:
+        df = pd.read_sql(query, conn)
+        st.dataframe(df, use_container_width=True)
+    except Exception as e:
+        st.error("Query execution error")
+        st.exception(e)
+
+st.caption(
+    "Tip: Limit rows for large tables to avoid performance issues."
+)
