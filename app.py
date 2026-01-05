@@ -1,165 +1,163 @@
 import streamlit as st
 import os
+import pandas as pd
 
 from config import (
     APP_TITLE,
     APP_TAGLINE,
-    APP_ICON,
-    LAYOUT,
     SESSION_DF_KEY,
 )
 
 # -------------------------------------------------
-# PAGE CONFIG
+# PAGE CONFIG (DS GROUP BRANDING)
 # -------------------------------------------------
 st.set_page_config(
-    page_title=f"Home | {APP_TITLE}",
-    page_icon=APP_ICON,
-    layout=LAYOUT,
+    page_title="Home | DS Group FMCG AI",
+    page_icon="assets/ds_group_favicon.png",
+    layout="wide",
 )
 
 # -------------------------------------------------
-# SIDEBAR (ENTERPRISE UI)
+# LOAD DATA
+# -------------------------------------------------
+df = st.session_state.get(SESSION_DF_KEY)
+
+# -------------------------------------------------
+# SIDEBAR (ENTERPRISE NAV)
 # -------------------------------------------------
 with st.sidebar:
 
-    # LOGO
-    logo_path = "assets/ds_group_logo.png"
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=170)
+    if os.path.exists("assets/ds_group_logo.png"):
+        st.image("assets/ds_group_logo.png", width=160)
     else:
         st.markdown("## 🏢 DS Group")
 
-    st.markdown("## 🏠 Home")
-    st.caption("Executive Control Center")
+    st.markdown("### 🏠 Home")
+    st.caption("FMCG Executive Intelligence Platform")
 
     st.divider()
-
-    # DATA STATUS CARD
-    df = st.session_state.get(SESSION_DF_KEY)
 
     if df is not None:
         st.success("✅ Data Connected")
         st.markdown(
             f"""
-            **Source:** `{st.session_state.get("data_source", "Unknown")}`  
-            **Rows:** `{df.shape[0]:,}`  
-            **Columns:** `{df.shape[1]}`
+            **Source:** `{st.session_state.get("data_source", "Uploaded / Snowflake")}`  
+            **Records:** `{df.shape[0]:,}`  
+            **Metrics:** `{df.shape[1]}`
             """
         )
     else:
-        st.warning("⚠ No Data Connected")
-        st.caption("Use **Upload Dataset** to begin")
+        st.warning("⚠ No Active Dataset")
 
     st.divider()
-
-    # QUICK ACTIONS
-    st.markdown("### ⚙ Quick Actions")
 
     if st.button("🔄 Reset Application", use_container_width=True):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
+        st.session_state.clear()
         st.rerun()
 
-    st.divider()
-    st.caption("© DS Group | FMCG Executive Intelligence Platform")
+    st.caption("© DS Group | Confidential")
 
 # -------------------------------------------------
-# MAIN HOME UI
+# HEADER (EXECUTIVE HERO)
 # -------------------------------------------------
 st.markdown(
-    f"""
+    """
     <div style="
-        padding:28px;
-        border-radius:16px;
-        background:linear-gradient(135deg,#F5F7FA,#FFFFFF);
-        border:1px solid #E0E0E0;
-        ">
-        <h1 style="margin-bottom:4px;">{APP_ICON} {APP_TITLE}</h1>
+        padding:30px;
+        border-radius:18px;
+        background:linear-gradient(135deg,#FFFFFF,#F4F6F9);
+        border:1px solid #E3E6EB;
+        margin-bottom:25px;">
+        <h1 style="margin-bottom:6px;">📊 DS Group FMCG AI Command Center</h1>
         <p style="font-size:16px;color:#333;">
-            {APP_TAGLINE}
+            Enterprise-grade analytics, forecasting & AI decision intelligence
         </p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-st.markdown("")
+# -------------------------------------------------
+# EXECUTIVE KPI TILES
+# -------------------------------------------------
+st.markdown("## 📌 Executive Snapshot")
+
+kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+
+if df is not None:
+    kpi1.metric("Total Records", f"{df.shape[0]:,}")
+    kpi2.metric("Total Variables", df.shape[1])
+    kpi3.metric("Data Freshness", "Latest")
+    kpi4.metric("AI Readiness", "High 🚀")
+else:
+    kpi1.metric("Total Records", "—")
+    kpi2.metric("Total Variables", "—")
+    kpi3.metric("Data Freshness", "—")
+    kpi4.metric("AI Readiness", "—")
 
 # -------------------------------------------------
-# EXECUTIVE INTRO
+# AI CEO SUMMARY PREVIEW
 # -------------------------------------------------
-st.markdown("## 🎯 Executive Overview")
-st.markdown(
-    """
-This platform delivers **production-grade FMCG intelligence** by combining:
+st.markdown("## 🧠 AI CEO Summary")
 
-- 📊 Advanced sales & distribution analytics  
-- 🔮 AI-driven forecasting & segmentation  
-- ❄️ Secure Snowflake warehouse integration  
-- 🧠 Actionable insights for CXOs & leadership  
-
-Designed for **speed, scale, and decision confidence**.
-"""
-)
-
-st.divider()
-
-# -------------------------------------------------
-# GETTING STARTED
-# -------------------------------------------------
-st.markdown("## 🚀 Get Started in 2 Steps")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown(
-        """
-        ### 📤 Upload Dataset
-        - CSV / Excel upload  
-        - Instant validation  
-        - No credentials required  
-
-        👉 Best for quick analysis
-        """
-    )
-
-with col2:
-    st.markdown(
-        """
-        ### ❄️ Connect Snowflake
-        - Secure warehouse access  
-        - SQL-based ingestion  
-        - Enterprise-grade governance  
-
-        👉 Best for production data
-        """
-    )
-
-st.divider()
-
-# -------------------------------------------------
-# DATA GUARD
-# -------------------------------------------------
 if df is None:
     st.info(
-        "➡️ **No data detected.**\n\n"
-        "Please upload a dataset or connect Snowflake using **Upload Dataset**.\n\n"
-        "Once data is available, all dashboards will activate automatically."
+        "Upload FMCG data or connect Snowflake to generate an **AI-powered CEO summary**."
     )
 else:
-    st.success(
-        "🎯 **Data Ready!**\n\n"
-        "Navigate using the sidebar to explore dashboards, forecasts, and AI insights."
+    st.markdown(
+        """
+        <div style="
+            padding:24px;
+            border-radius:16px;
+            background:#FFFFFF;
+            border:1px solid #E0E0E0;
+            line-height:1.7;
+            ">
+            <h4>📈 Executive Intelligence Brief</h4>
+            <p>
+            Based on the ingested FMCG dataset, the AI identifies 
+            <b>key sales drivers, outlet performance variance, and demand volatility trends</b>.
+            </p>
+            <p>
+            Preliminary insights indicate opportunities in 
+            <b>distribution optimization, inventory rationalization, and region-wise demand forecasting</b>.
+            </p>
+            <p>
+            Leadership teams can leverage AI modules to:
+            </p>
+            <ul>
+                <li>🔍 Identify underperforming outlets</li>
+                <li>📦 Optimize stock allocation</li>
+                <li>🔮 Forecast category-level demand</li>
+                <li>⚠ Detect churn & risk signals early</li>
+            </ul>
+            <p style="color:#555;">
+            👉 Navigate to dashboards & AI Analyst for deep-dive insights.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
+
+# -------------------------------------------------
+# NEXT STEPS
+# -------------------------------------------------
+st.markdown("## 🚀 Next Actions")
+
+c1, c2, c3 = st.columns(3)
+
+c1.info("📤 Upload / Refresh FMCG Dataset")
+c2.info("📊 Explore Executive Dashboards")
+c3.info("🤖 Ask AI Analyst Strategic Questions")
 
 # -------------------------------------------------
 # FOOTER
 # -------------------------------------------------
 st.markdown(
     """
-    <div style="margin-top:40px;text-align:center;color:#777;font-size:13px;">
-        Built for enterprise FMCG analytics • Secure • Scalable • AI-powered
+    <div style="margin-top:50px;text-align:center;color:#777;font-size:13px;">
+        DS Group FMCG AI Platform • Secure • Scalable • Boardroom Ready
     </div>
     """,
     unsafe_allow_html=True,
