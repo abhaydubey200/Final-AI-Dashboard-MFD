@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 
 st.set_page_config(
     page_title="Snowflake Data Explorer",
@@ -8,87 +7,82 @@ st.set_page_config(
 )
 
 st.header("❄️ Snowflake Data Explorer")
+st.caption("Browse databases, schemas & tables safely")
 
 # --------------------------------------------------
-# Validate Snowflake session
+# Validate Snowflake Login
 # --------------------------------------------------
-df = st.session_state.get("df")
-source = st.session_state.get("data_source")
+if not st.session_state.get("snowflake_logged"):
+    st.warning("🔐 Login via Snowflake Data Ingestion first")
+    st.stop()
 
-if df is None or source != "snowflake":
-    st.warning("❗ Please load data from Snowflake first using Data Ingestion page")
+conn = st.session_state.get("snowflake_conn")
+if conn is None:
+    st.error("❌ Snowflake connection missing")
     st.stop()
 
 # --------------------------------------------------
-# Fix Arrow serialization issues (CRITICAL)
+# Load Metadata
 # --------------------------------------------------
-def make_arrow_safe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Convert mixed-type columns to string to avoid Arrow crashes.
-    Production-safe for Snowflake data.
-    """
-    safe_df = df.copy()
-
-    for col in safe_df.columns:
-        # Object columns often break Arrow
-        if safe_df[col].dtype == "object":
-            safe_df[col] = safe_df[col].astype(str)
-
-    # Replace common Snowflake null strings
-    safe_df.replace(
-        ["None", "nan", "NaN", "NULL"],
-        np.nan,
-        inplace=True
+@st.cache_data(show_spinner=False)
+def load_tables():
+    return pd.read_sql(
+        """
+        SELECT TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_TYPE = 'BASE TABLE'
+        """,
+        conn
     )
 
-    return safe_df
-
-
-safe_df = make_arrow_safe(df)
+tables_df = load_tables()
 
 # --------------------------------------------------
-# Dataset Overview
+# UI – Table Selector
 # --------------------------------------------------
-st.subheader("📄 Dataset Overview")
+st.subheader("📦 Select Table")
 
-st.dataframe(
-    safe_df,
-    width="stretch",
-    height=420
+db = st.selectbox(
+    "Database",
+    sorted(tables_df["TABLE_CATALOG"].unique())
+)
+
+schema = st.selectbox(
+    "Schema",
+    sorted(tables_df[tables_df["TABLE_CATALOG"] == db]["TABLE_SCHEMA"].unique())
+)
+
+table = st.selectbox(
+    "Table",
+    sorted(
+        tables_df[
+            (tables_df["TABLE_CATALOG"] == db) &
+            (tables_df["TABLE_SCHEMA"] == schema)
+        ]["TABLE_NAME"].unique()
+    )
 )
 
 # --------------------------------------------------
-# Metadata Summary
+# Fetch Data
 # --------------------------------------------------
-st.subheader("📊 Column Summary")
+if st.button("📥 Load Table Data"):
+    try:
+        query = f'SELECT * FROM "{db}"."{schema}"."{table}" LIMIT 1000'
+        df = pd.read_sql(query, conn)
 
-summary_df = pd.DataFrame({
-    "Column": safe_df.columns,
-    "Data Type": safe_df.dtypes.astype(str),
-    "Non-Null Count": safe_df.notnull().sum().values
-})
+        # Arrow safety
+        df = df.astype(str)
 
-st.dataframe(
-    summary_df,
-    width="stretch",
-    height=300
-)
+        st.session_state["df"] = df
 
-# --------------------------------------------------
-# Basic Stats (Numeric Only)
-# --------------------------------------------------
-numeric_cols = safe_df.select_dtypes(include=["int", "float"]).columns
+        st.success(f"✅ Loaded {len(df)} rows from {table}")
 
-if len(numeric_cols) > 0:
-    st.subheader("📈 Numeric Statistics")
-    st.dataframe(
-        safe_df[numeric_cols].describe().T,
-        width="stretch"
-    )
-else:
-    st.info("ℹ️ No numeric columns available for statistical summary")
+        st.dataframe(
+            df,
+            width="stretch",
+            height=450
+        )
 
-# --------------------------------------------------
-# Footer
-# --------------------------------------------------
-st.caption("❄️ Powered by Snowflake • Enterprise Data Explorer")
+    except Exception as e:
+        st.error("❌ Failed to load table")
+        st.exception(e)
