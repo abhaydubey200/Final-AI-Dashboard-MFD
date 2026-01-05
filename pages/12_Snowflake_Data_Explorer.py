@@ -1,88 +1,36 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(
-    page_title="Snowflake Data Explorer",
-    layout="wide"
-)
+st.set_page_config(page_title="Snowflake Data Explorer", layout="wide")
 
-st.header("❄️ Snowflake Data Explorer")
-st.caption("Browse databases, schemas & tables safely")
+st.title("🧊 Snowflake Data Explorer")
 
-# --------------------------------------------------
-# Validate Snowflake Login
-# --------------------------------------------------
 if not st.session_state.get("snowflake_logged"):
     st.warning("🔐 Login via Snowflake Data Ingestion first")
     st.stop()
 
-conn = st.session_state.get("snowflake_conn")
-if conn is None:
-    st.error("❌ Snowflake connection missing")
-    st.stop()
+conn = st.session_state["snowflake_conn"]
+cur = conn.cursor()
 
-# --------------------------------------------------
-# Load Metadata
-# --------------------------------------------------
-@st.cache_data(show_spinner=False)
-def load_tables():
-    return pd.read_sql(
-        """
-        SELECT TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_TYPE = 'BASE TABLE'
-        """,
-        conn
-    )
+# ---------------- DATABASES ----------------
+cur.execute("SHOW DATABASES")
+dbs = [r[1] for r in cur.fetchall()]
+database = st.selectbox("Database", dbs)
 
-tables_df = load_tables()
+# ---------------- SCHEMAS ----------------
+cur.execute(f"SHOW SCHEMAS IN DATABASE {database}")
+schemas = [r[1] for r in cur.fetchall()]
+schema = st.selectbox("Schema", schemas)
 
-# --------------------------------------------------
-# UI – Table Selector
-# --------------------------------------------------
-st.subheader("📦 Select Table")
+# ---------------- TABLES ----------------
+cur.execute(f"SHOW TABLES IN {database}.{schema}")
+tables = [r[1] for r in cur.fetchall()]
+table = st.selectbox("Table", tables)
 
-db = st.selectbox(
-    "Database",
-    sorted(tables_df["TABLE_CATALOG"].unique())
-)
+# ---------------- PREVIEW ----------------
+if st.button("🔍 Preview Data"):
+    query = f'SELECT * FROM "{database}"."{schema}"."{table}" LIMIT 100'
+    df = pd.read_sql(query, conn)
 
-schema = st.selectbox(
-    "Schema",
-    sorted(tables_df[tables_df["TABLE_CATALOG"] == db]["TABLE_SCHEMA"].unique())
-)
-
-table = st.selectbox(
-    "Table",
-    sorted(
-        tables_df[
-            (tables_df["TABLE_CATALOG"] == db) &
-            (tables_df["TABLE_SCHEMA"] == schema)
-        ]["TABLE_NAME"].unique()
-    )
-)
-
-# --------------------------------------------------
-# Fetch Data
-# --------------------------------------------------
-if st.button("📥 Load Table Data"):
-    try:
-        query = f'SELECT * FROM "{db}"."{schema}"."{table}" LIMIT 1000'
-        df = pd.read_sql(query, conn)
-
-        # Arrow safety
-        df = df.astype(str)
-
-        st.session_state["df"] = df
-
-        st.success(f"✅ Loaded {len(df)} rows from {table}")
-
-        st.dataframe(
-            df,
-            width="stretch",
-            height=450
-        )
-
-    except Exception as e:
-        st.error("❌ Failed to load table")
-        st.exception(e)
+    df = df.astype(str)  # 🔥 Arrow-safe
+    st.dataframe(df, width="stretch")
