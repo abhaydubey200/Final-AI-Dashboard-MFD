@@ -1,69 +1,100 @@
+# --------------------------------------------------
+# ❄️ Snowflake SQL Studio (Production Ready)
+# --------------------------------------------------
+
 import streamlit as st
 import pandas as pd
 
-from utils.snowflake_connector import get_snowflake_connection
-from utils.snowflake_metadata import validate_select_query, execute_query
+st.set_page_config(
+    page_title="Snowflake SQL Studio",
+    layout="wide"
+)
 
-# -------------------------------------------------
-# Page Config
-# -------------------------------------------------
-st.set_page_config(page_title="Snowflake SQL Studio", layout="wide")
+st.header("❄️ Snowflake SQL Studio")
+st.caption(
+    "Enterprise-grade SQL workspace for Snowflake\n"
+    "Read-only | Secure | Production-safe"
+)
 
-st.title("🧠 Snowflake SQL Studio")
-st.markdown("Run **read-only SQL queries** securely on Snowflake")
+# --------------------------------------------------
+# Enable Snowflake
+# --------------------------------------------------
+enable_snowflake = st.toggle(
+    "Enable Snowflake SQL Studio",
+    value=False
+)
 
-st.divider()
-
-# -------------------------------------------------
-# Connection
-# -------------------------------------------------
-try:
-    conn = get_snowflake_connection()
-except Exception as e:
-    st.error(f"❌ Snowflake connection failed: {e}")
+if not enable_snowflake:
+    st.info("Enable Snowflake only when credentials are configured.")
     st.stop()
 
-# -------------------------------------------------
-# SQL Editor
-# -------------------------------------------------
-sql = st.text_area(
-    "✍ Write SELECT Query",
-    height=200,
-    placeholder="SELECT * FROM database.schema.table LIMIT 100;"
+# --------------------------------------------------
+# SAFE IMPORT
+# --------------------------------------------------
+try:
+    from utils.snowflake_connector import get_snowflake_connection
+except Exception:
+    st.error(
+        "Snowflake connector missing.\n\n"
+        "Required file: utils/snowflake_connector.py"
+    )
+    st.stop()
+
+# --------------------------------------------------
+# SAFE SQL VALIDATION (INLINE)
+# --------------------------------------------------
+def validate_select_query(query: str) -> bool:
+    if not query:
+        return False
+    q = query.strip().lower()
+    return q.startswith("select")
+
+# --------------------------------------------------
+# CONNECT TO SNOWFLAKE
+# --------------------------------------------------
+try:
+    conn = get_snowflake_connection()
+    st.success("Connected to Snowflake")
+except Exception as e:
+    st.error("Failed to connect to Snowflake")
+    st.exception(e)
+    st.stop()
+
+# --------------------------------------------------
+# SQL EDITOR
+# --------------------------------------------------
+st.subheader("🧠 SQL Editor")
+
+query = st.text_area(
+    "Write SELECT query only",
+    height=180,
+    value="SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE();"
 )
 
-col1, col2 = st.columns([1, 4])
+run_query = st.button("▶ Run Query")
 
-with col1:
-    limit = st.number_input(
-        "Row Limit",
-        min_value=10,
-        max_value=50000,
-        value=1000,
-        step=100
-    )
+# --------------------------------------------------
+# EXECUTION
+# --------------------------------------------------
+if run_query:
+    if not validate_select_query(query):
+        st.error("Only SELECT queries are allowed")
+        st.stop()
 
-# -------------------------------------------------
-# Execute
-# -------------------------------------------------
-if st.button("▶ Run Query"):
     try:
-        validate_select_query(sql)
-        df = execute_query(conn, sql, limit)
+        df = pd.read_sql(query, conn)
 
-        st.success(f"✅ Retrieved {len(df):,} rows")
-        st.dataframe(df, use_container_width=True)
-
-        if st.button("➡ Use Result in Dashboard"):
-            st.session_state["df"] = df
-            st.success("📊 Data loaded into analytics session")
+        if df.empty:
+            st.warning("Query executed successfully but returned no data")
+        else:
+            st.success(f"Returned {len(df):,} rows")
+            st.dataframe(df, use_container_width=True)
 
     except Exception as e:
-        st.error(f"❌ Query Error: {e}")
+        st.error("Query execution failed")
+        st.exception(e)
 
-# -------------------------------------------------
-# Security Note
-# -------------------------------------------------
-st.info(
-    "🔐 Only **SELECT queries** allowed. INSERT / UPDATE / DELETE are blocked."
-)
+# --------------------------------------------------
+# FOOTER
+# --------------------------------------------------
+st.caption("Snowflake SQL Studio • Read-only • Production Safe")
