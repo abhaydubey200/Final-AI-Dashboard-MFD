@@ -22,7 +22,7 @@ st.set_page_config(
 )
 
 st.title("🧠 Executive Overview")
-st.caption("CEO-level snapshot of FMCG business performance")
+st.caption("snapshot of FMCG business performance")
 
 st.divider()
 
