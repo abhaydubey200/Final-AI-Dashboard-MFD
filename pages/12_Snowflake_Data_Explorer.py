@@ -1,77 +1,67 @@
 import streamlit as st
 import pandas as pd
 
-from utils.schema_normalizer import normalize_dataframe_schema
-
-st.set_page_config(page_title="Snowflake Data Explorer", layout="wide")
+from utils.snowflake_connector import get_snowflake_connection
 
 st.header("❄️ Snowflake Data Explorer")
-st.caption("Browse databases, schemas & tables and load data safely into the application")
+st.caption("Browse databases, schemas & tables safely")
 
-# --------------------------------------------------
-# Connection check
-# --------------------------------------------------
 conn = st.session_state.get("snowflake_conn")
+
 if conn is None:
     st.warning("🔐 Login via Snowflake Data Ingestion first")
     st.stop()
 
-# --------------------------------------------------
-# Helpers (CORRECT METADATA PARSING)
-# --------------------------------------------------
-@st.cache_data(show_spinner=False)
-def fetch_databases():
-    return pd.read_sql("SHOW DATABASES", conn)["name"].tolist()
 
 @st.cache_data(show_spinner=False)
-def fetch_schemas(db):
-    return pd.read_sql(f'SHOW SCHEMAS IN DATABASE "{db}"', conn)["name"].tolist()
+def fetch_list(query):
+    return pd.read_sql(query, conn).iloc[:, 0].dropna().tolist()
 
-@st.cache_data(show_spinner=False)
-def fetch_tables(db, schema):
-    return pd.read_sql(
-        f'SHOW TABLES IN SCHEMA "{db}"."{schema}"', conn
-    )["name"].tolist()
 
-@st.cache_data(show_spinner=False)
-def fetch_preview(db, schema, table):
+# -------------------------------
+# DATABASE
+# -------------------------------
+databases = fetch_list("SHOW DATABASES")
+db = st.selectbox("Database", databases)
+
+st.session_state["sf_database"] = db
+
+# -------------------------------
+# SCHEMA
+# -------------------------------
+schemas = fetch_list(f'SHOW SCHEMAS IN DATABASE "{db}"')
+schema = st.selectbox("Schema", schemas)
+
+st.session_state["sf_schema"] = schema
+
+# -------------------------------
+# TABLE
+# -------------------------------
+tables = fetch_list(f'SHOW TABLES IN SCHEMA "{db}"."{schema}"')
+table = st.selectbox("Table", tables)
+
+st.session_state["sf_table"] = table
+
+st.success(f"Selected: {db}.{schema}.{table}")
+
+# -------------------------------
+# PREVIEW
+# -------------------------------
+if st.button("👁 Preview Table"):
     q = f'SELECT * FROM "{db}"."{schema}"."{table}" LIMIT 200'
-    return pd.read_sql(q, conn)
+    df = pd.read_sql(q, conn)
+    st.dataframe(df, width="stretch")
 
-# --------------------------------------------------
-# UI
-# --------------------------------------------------
-db = st.selectbox("Database", fetch_databases())
-schema = st.selectbox("Schema", fetch_schemas(db))
-table = st.selectbox("Table", fetch_tables(db, schema))
+    st.session_state["preview_df"] = df
 
-# --------------------------------------------------
-# Preview
-# --------------------------------------------------
-preview_df = fetch_preview(db, schema, table)
-st.subheader("🔍 Table Preview (Top 200 Rows)")
-st.dataframe(preview_df, width="stretch")
-
-# --------------------------------------------------
-# LOAD DATA INTO APPLICATION (FINAL FIX)
-# --------------------------------------------------
-st.divider()
-st.subheader("📥 Load Table into Application")
-
-if st.button("🚀 Load Data & Activate Dashboards"):
-    try:
-        full_df = pd.read_sql(
-            f'SELECT * FROM "{db}"."{schema}"."{table}"',
-            conn
-        )
-
-        df_final = normalize_dataframe_schema(full_df)
-
-        st.session_state["df"] = df_final
-        st.session_state["data_source"] = "snowflake"
-        st.session_state["active_table"] = f"{db}.{schema}.{table}"
-
-        st.success("✅ Data loaded successfully. All dashboards are now active.")
-
-    except Exception as e:
-        st.error(f"❌ Failed to load data: {e}")
+# -------------------------------
+# LOAD DATA
+# -------------------------------
+if st.button("📥 Load Data into Dashboard"):
+    if "preview_df" not in st.session_state:
+        st.warning("Preview table first")
+    else:
+        st.session_state["df"] = st.session_state["preview_df"]
+        st.session_state["data_source"] = "Snowflake Explorer"
+        st.success("✅ Data loaded into application")
+        st.rerun()
