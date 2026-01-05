@@ -1,33 +1,56 @@
 import streamlit as st
 import pandas as pd
-
 from utils.snowflake_connector import get_snowflake_connection
 from config import SESSION_DF_KEY
 
 st.header("🧊 Snowflake SQL Studio")
-st.caption("Run secure read-only SQL queries and load results into dashboards")
+st.caption("Run secure read-only SQL queries and load results")
 
-conn = get_snowflake_connection()
-if conn is None:
-    st.warning("🔐 Connect Snowflake from **Upload Dataset** page first")
+# -------------------------------------------------
+# GUARD
+# -------------------------------------------------
+if "snowflake_config" not in st.session_state:
+    st.warning("🔐 Login via **Upload Dataset → Snowflake** first")
     st.stop()
 
+conn = get_snowflake_connection()
+cur = conn.cursor()
 
+# -------------------------------------------------
+# SQL INPUT
+# -------------------------------------------------
 query = st.text_area(
     "SQL Query (SELECT only)",
     height=180,
-    placeholder='SELECT * FROM DATABASE.SCHEMA.TABLE LIMIT 100'
+    placeholder='SELECT * FROM MY_DB.MY_SCHEMA.MY_TABLE LIMIT 100'
 )
 
+# -------------------------------------------------
+# EXECUTE
+# -------------------------------------------------
 if st.button("▶ Run Query"):
-    try:
-        df = pd.read_sql(query, conn)
-        st.dataframe(df, width="stretch")
+    if not query.strip().lower().startswith("select"):
+        st.error("❌ Only SELECT queries are allowed")
+        st.stop()
 
-        if st.button("📥 Load result into application"):
-            st.session_state[SESSION_DF_KEY] = df
-            st.session_state["data_source"] = "Snowflake"
-            st.success("✅ Query result loaded into application")
+    try:
+        cur.execute(query)
+        rows = cur.fetchall()
+        cols = [c[0] for c in cur.description]
+        df = pd.DataFrame(rows, columns=cols)
+
+        st.session_state["_sql_result"] = df
+        st.success(f"✅ Query executed ({df.shape[0]:,} rows)")
+        st.dataframe(df, width="stretch")
 
     except Exception as e:
         st.error(f"❌ Query failed: {e}")
+
+# -------------------------------------------------
+# LOAD INTO APP
+# -------------------------------------------------
+if "_sql_result" in st.session_state:
+    if st.button("📥 Load Result into Application"):
+        st.session_state[SESSION_DF_KEY] = st.session_state["_sql_result"]
+        st.session_state["data_source"] = "Snowflake SQL"
+        st.success("✅ Data loaded into dashboards")
