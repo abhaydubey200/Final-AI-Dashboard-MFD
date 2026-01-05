@@ -80,7 +80,7 @@ with col1:
     st.markdown(
         """
         **📤 Upload Dataset**
-        - CSV / Excel up to 2GB  
+        - CSV / Excel up to 200MB 
         - Instant analytics  
         - No credentials required
         """
