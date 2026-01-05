@@ -1,20 +1,18 @@
 import snowflake.connector
+import streamlit as st
 
-def get_snowflake_connection(
-    account,
-    user,
-    password,
-    warehouse,
-    database,
-    schema,
-    role
-):
+@st.cache_resource(show_spinner=False)
+def get_snowflake_connection():
+    cfg = st.session_state.get("snowflake_config")
+    if not cfg:
+        return None
+
     return snowflake.connector.connect(
-        account=account,
-        user=user,
-        password=password,
-        warehouse=warehouse,
-        database=database,
-        schema=schema,
-        role=role
+        account=cfg["account"],
+        user=cfg["user"],
+        password=cfg["password"],
+        warehouse=cfg["warehouse"],
+        database=cfg["database"],
+        schema=cfg["schema"],
+        role=cfg["role"],
     )
