@@ -2,10 +2,9 @@
 headless = true
 enableCORS = false
 enableXsrfProtection = true
-port = $PORT
 
-# Max upload size (MB)
-# NOTE: Streamlit Cloud HARD LIMIT ≈ 1GB
+# Increase upload limit (MB)
+# Streamlit Cloud hard limit ~1GB
 maxUploadSize = 2048
 
 [client]
@@ -14,7 +13,7 @@ toolbarMode = "viewer"
 
 [theme]
 base = "light"
-primaryColor = "#1F7A4F"          # DS Group Green
+primaryColor = "#1F7A4F"          # DS Group green
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F5F7FA"
 textColor = "#000000"
