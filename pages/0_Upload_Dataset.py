@@ -1,95 +1,78 @@
-# -------------------------------------------------
-# Page 0 : Upload Dataset / Snowflake Connector
-# -------------------------------------------------
-
 import streamlit as st
 import pandas as pd
 
-from config import SESSION_DF_KEY
-
-# -------------------------------------------------
-# Page Config
-# -------------------------------------------------
-st.set_page_config(
-    page_title="Upload Dataset",
-    page_icon="📤",
-    layout="wide"
+from utils.snowflake_connector import (
+    get_snowflake_connection,
+    fetch_table_df
 )
 
-st.title("📤 Data Ingestion")
-st.caption("Upload FMCG sales data or connect to Snowflake")
+st.set_page_config(page_title="Data Ingestion", layout="wide")
+st.header("📤 Data Ingestion")
 
-st.divider()
-
-# -------------------------------------------------
-# Source Selector
-# -------------------------------------------------
 source = st.radio(
     "Select Data Source",
     ["Upload File", "Snowflake"],
     horizontal=True
 )
 
-# -------------------------------------------------
-# FILE UPLOAD MODE
-# -------------------------------------------------
+# ----------------------------------
+# FILE UPLOAD
+# ----------------------------------
 if source == "Upload File":
-    uploaded_file = st.file_uploader(
-        "Upload CSV / Excel File",
+
+    uploaded = st.file_uploader(
+        "Upload FMCG Dataset (CSV / Excel)",
         type=["csv", "xlsx"]
     )
 
-    if uploaded_file is not None:
+    if uploaded:
+        if uploaded.name.endswith(".csv"):
+            df = pd.read_csv(uploaded)
+        else:
+            df = pd.read_excel(uploaded)
+
+        st.session_state["df"] = df
+        st.session_state["data_source"] = "upload"
+        st.success(f"✅ Dataset loaded ({df.shape[0]} rows)")
+
+# ----------------------------------
+# SNOWFLAKE INGESTION
+# ----------------------------------
+else:
+    st.subheader("❄️ Snowflake Connection")
+
+    with st.form("snowflake_form"):
+        account = st.text_input("Account")
+        user = st.text_input("User")
+        password = st.text_input("Password", type="password")
+        warehouse = st.text_input("Warehouse")
+        database = st.text_input("Database")
+        schema = st.text_input("Schema")
+        role = st.text_input("Role")
+        table = st.text_input("Table Name")
+
+        login = st.form_submit_button("Login & Load Data")
+
+    if login:
+        creds = {
+            "account": account,
+            "user": user,
+            "password": password,
+            "warehouse": warehouse,
+            "database": database,
+            "schema": schema,
+            "role": role,
+        }
+
         try:
-            if uploaded_file.name.endswith(".csv"):
-                df = pd.read_csv(uploaded_file)
-            else:
-                df = pd.read_excel(uploaded_file)
+            conn = get_snowflake_connection(creds)
+            df = fetch_table_df(conn, database, schema, table)
 
-            if df.empty:
-                st.error("Uploaded file is empty.")
-            else:
-                st.session_state[SESSION_DF_KEY] = df
-                st.session_state["data"] = df
-                st.session_state["source"] = "upload"
+            st.session_state["df"] = df
+            st.session_state["data_source"] = "snowflake"
 
-                st.success("✅ File uploaded successfully")
-                st.write("### Preview")
-                st.dataframe(df.head(50), use_container_width=True)
+            st.success(f"✅ Snowflake data loaded ({df.shape[0]} rows)")
+            st.info("📊 All dashboards are now active")
 
         except Exception as e:
-            st.error("Failed to read uploaded file")
-            st.exception(e)
-
-# -------------------------------------------------
-# SNOWFLAKE MODE (PLACEHOLDER – SAFE)
-# -------------------------------------------------
-else:
-    st.info(
-        "❄️ Snowflake integration is enabled at architecture level.\n\n"
-        "Connection UI & query execution will be activated "
-        "once credentials are configured."
-    )
-
-    with st.expander("Snowflake Connection (Preview)", expanded=False):
-        st.text_input("Account")
-        st.text_input("User")
-        st.text_input("Warehouse")
-        st.text_input("Database")
-        st.text_input("Schema")
-        st.text_input("Role")
-        st.text_input("Password", type="password")
-
-        st.button("Connect (Disabled)", disabled=True)
-
-# -------------------------------------------------
-# Footer Status
-# -------------------------------------------------
-st.divider()
-
-if st.session_state.get(SESSION_DF_KEY) is not None:
-    st.success(
-        f"Dataset Active | Rows: {len(st.session_state[SESSION_DF_KEY]):,}"
-    )
-else:
-    st.warning("No dataset loaded yet.")
+            st.error(f"❌ Snowflake connection failed: {e}")
