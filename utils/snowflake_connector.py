@@ -1,25 +1,26 @@
-# utils/snowflake_connector.py
 # --------------------------------------------------
-# Snowflake Connection Utility (SAFE)
+# ❄️ Snowflake Connector Utility
 # --------------------------------------------------
 
-import snowflake.connector
 import streamlit as st
-
+import snowflake.connector
 
 def get_snowflake_connection():
     """
-    Creates and returns a Snowflake connection using Streamlit secrets.
+    Create and return Snowflake connection using Streamlit secrets
     """
 
-    if "snowflake" not in st.secrets:
-        raise RuntimeError("Snowflake secrets not configured")
+    try:
+        conn = snowflake.connector.connect(
+            user=st.secrets["snowflake"]["user"],
+            password=st.secrets["snowflake"]["password"],
+            account=st.secrets["snowflake"]["account"],
+            warehouse=st.secrets["snowflake"]["warehouse"],
+            database=st.secrets["snowflake"]["database"],
+            schema=st.secrets["snowflake"]["schema"],
+            role=st.secrets["snowflake"]["role"],
+        )
+        return conn
 
-    return snowflake.connector.connect(
-        user=st.secrets["snowflake"]["user"],
-        password=st.secrets["snowflake"]["password"],
-        account=st.secrets["snowflake"]["account"],
-        warehouse=st.secrets["snowflake"]["warehouse"],
-        database=st.secrets["snowflake"]["database"],
-        schema=st.secrets["snowflake"]["schema"],
-    )
+    except Exception as e:
+        raise RuntimeError(f"Snowflake connection error: {e}")
