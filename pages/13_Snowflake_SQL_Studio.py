@@ -1,67 +1,70 @@
 import streamlit as st
 import pandas as pd
 
-from utils.schema_normalizer import normalize_dataframe_schema
-from utils.snowflake_metadata import validate_select_query
+from utils.snowflake_connector import get_snowflake_connection
+from utils.snowflake_context import get_snowflake_context, is_snowflake_context_ready
 
-st.set_page_config(page_title="Snowflake SQL Studio", layout="wide")
-
-st.header("🧠 Snowflake SQL Studio")
-st.caption("Run secure read-only SQL queries and load results into dashboards")
+st.header("❄️ Snowflake SQL Studio")
+st.caption("Run secure read-only queries and load data into application")
 
 # --------------------------------------------------
-# Connection check
+# CONNECTION CHECK
 # --------------------------------------------------
 conn = st.session_state.get("snowflake_conn")
+
 if conn is None:
     st.warning("🔐 Login via Snowflake Data Ingestion first")
     st.stop()
 
 # --------------------------------------------------
-# SQL Input
+# CONTEXT CHECK (CRITICAL FIX)
 # --------------------------------------------------
-sql = st.text_area(
-    "Enter SELECT query",
-    height=180,
-    placeholder='SELECT * FROM MFD_DWH.MFD_SCHEMA.SALES LIMIT 1000'
+db, schema, table = get_snowflake_context()
+
+if not is_snowflake_context_ready():
+    st.warning("⚠️ Select Database → Schema → Table in Snowflake Data Explorer")
+    st.stop()
+
+st.success(f"Context: `{db}.{schema}.{table}`")
+
+# --------------------------------------------------
+# SQL EDITOR
+# --------------------------------------------------
+default_query = f'''
+SELECT *
+FROM "{db}"."{schema}"."{table}"
+LIMIT 200
+'''
+
+query = st.text_area(
+    "SQL Query (READ ONLY)",
+    value=default_query,
+    height=180
 )
 
 # --------------------------------------------------
-# Run Query
+# RUN QUERY
 # --------------------------------------------------
 if st.button("▶ Run Query"):
-    if not validate_select_query(sql):
-        st.error("❌ Only SELECT queries are allowed")
-        st.stop()
-
     try:
-        result_df = pd.read_sql(sql, conn)
-        st.session_state["sql_result_df"] = result_df
+        df = pd.read_sql(query, conn)
+        st.dataframe(df, width="stretch")
 
-        st.subheader("📊 Query Result Preview")
-        st.dataframe(result_df, width="stretch")
+        st.session_state["preview_df"] = df
+        st.success(f"Fetched {len(df)} rows")
 
     except Exception as e:
-        st.error(f"❌ Query failed: {e}")
-        st.stop()
+        st.error("❌ Query failed")
+        st.exception(e)
 
 # --------------------------------------------------
-# LOAD QUERY RESULT INTO APPLICATION (FINAL FIX)
+# LOAD DATA INTO APPLICATION
 # --------------------------------------------------
-if "sql_result_df" in st.session_state:
-    st.divider()
-    st.subheader("📥 Load Query Result into Application")
-
-    if st.button("🚀 Load Data & Activate Dashboards"):
-        try:
-            df_final = normalize_dataframe_schema(
-                st.session_state["sql_result_df"]
-            )
-
-            st.session_state["df"] = df_final
-            st.session_state["data_source"] = "snowflake_sql"
-
-            st.success("✅ Query result loaded successfully")
-
-        except Exception as e:
-            st.error(f"❌ Failed to load data: {e}")
+if st.button("📥 Load Data into Dashboard"):
+    if "preview_df" not in st.session_state:
+        st.warning("Run query first")
+    else:
+        st.session_state["df"] = st.session_state["preview_df"]
+        st.session_state["data_source"] = "Snowflake SQL Studio"
+        st.success("✅ Data loaded into application")
+        st.rerun()
