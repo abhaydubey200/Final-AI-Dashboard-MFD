@@ -1,122 +1,156 @@
-# utils/forecasting.py
-# -------------------------------------------------
-# Robust Forecasting Utilities (Prophet + Fallback)
-# -------------------------------------------------
+# pages/7_Sales_Forecasting.py
+# --------------------------------------------------
+# 📈 Sales Forecasting & Demand Planning (PRODUCTION)
+# --------------------------------------------------
 
+import streamlit as st
 import pandas as pd
-import numpy as np
 
-from sklearn.linear_model import LinearRegression
+from utils.column_detector import auto_detect_columns
+from utils.data_processing import preprocess
+from utils.forecasting import prepare_time_series, forecast_sales
+from utils.visualizations import line_sales_trend
+
+st.header("📈 Sales Forecasting & Demand Planning")
+
+# --------------------------------------------------
+# Load Data
+# --------------------------------------------------
+df = st.session_state.get("df")
+
+if df is None or df.empty:
+    st.warning("Please upload a dataset first.")
+    st.stop()
+
+# --------------------------------------------------
+# Detect Columns
+# --------------------------------------------------
+cols = auto_detect_columns(df)
+
+date_col = cols.get("date")
+sales_col = cols.get("sales")
+
+if not date_col or not sales_col:
+    st.error("Required columns missing: Date or Sales")
+    st.stop()
+
+# --------------------------------------------------
+# Preprocess
+# --------------------------------------------------
+df = preprocess(df, date_col)
+
+if df.empty:
+    st.warning("No valid data available after preprocessing.")
+    st.stop()
+
+# --------------------------------------------------
+# Forecast Configuration
+# --------------------------------------------------
+st.subheader("⚙ Forecast Configuration")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    months = st.slider(
+        "Forecast Horizon (Months)",
+        min_value=3,
+        max_value=24,
+        value=6
+    )
+
+with col2:
+    freq = st.selectbox(
+        "Forecast Frequency",
+        options=["Monthly"],
+        index=0
+    )
+
+# --------------------------------------------------
+# Prepare Time Series
+# --------------------------------------------------
+try:
+    ts_df = prepare_time_series(
+        df=df,
+        date_col=date_col,
+        sales_col=sales_col,
+        freq="M"
+    )
+except Exception as e:
+    st.error(f"Failed to prepare time series: {e}")
+    st.stop()
+
+if ts_df is None or ts_df.empty or len(ts_df) < 2:
+    st.warning("Not enough historical data for forecasting.")
+    st.stop()
+
+# --------------------------------------------------
+# Actual Sales Chart
+# --------------------------------------------------
+st.subheader("📊 Historical Sales Trend")
 
 try:
-    from prophet import Prophet
-    PROPHET_AVAILABLE = True
+    st.plotly_chart(
+        line_sales_trend(ts_df, "Date", "Sales"),
+        use_container_width=True
+    )
 except Exception:
-    PROPHET_AVAILABLE = False
+    st.info("Unable to render historical chart.")
 
+# --------------------------------------------------
+# Forecast
+# --------------------------------------------------
+st.subheader("🔮 Sales Forecast")
 
-def prepare_time_series(df, date_col, sales_col, freq="M"):
-    """
-    Prepare aggregated time series data with STANDARDIZED output.
-    Returns columns: Date, Sales
-    """
+try:
+    forecast_df = forecast_sales(ts_df, periods=months)
+except Exception as e:
+    st.error(f"Forecasting failed: {e}")
+    st.stop()
 
-    temp = df[[date_col, sales_col]].copy()
-    temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
+if forecast_df is None or forecast_df.empty:
+    st.warning("Forecast could not be generated.")
+    st.stop()
 
-    temp = (
-        temp
-        .groupby(pd.Grouper(key=date_col, freq=freq))[sales_col]
-        .sum()
-        .reset_index()
-        .dropna()
+# --------------------------------------------------
+# Combine Actual + Forecast
+# --------------------------------------------------
+actual_df = ts_df.copy()
+actual_df["Type"] = "Actual"
+
+forecast_df = forecast_df.copy()
+forecast_df["Type"] = "Forecast"
+
+combined_df = pd.concat(
+    [actual_df, forecast_df],
+    ignore_index=True
+)
+
+# --------------------------------------------------
+# Forecast Visualization
+# --------------------------------------------------
+try:
+    st.plotly_chart(
+        line_sales_trend(
+            combined_df,
+            date_col="Date",
+            sales_col="Sales"
+        ),
+        use_container_width=True
     )
+except Exception:
+    st.info("Forecast chart could not be rendered.")
 
-    temp = temp.rename(
-        columns={
-            date_col: "Date",
-            sales_col: "Sales"
-        }
-    )
+# --------------------------------------------------
+# Forecast Table
+# --------------------------------------------------
+st.subheader("📄 Forecast Data")
 
-    temp = temp.sort_values("Date").reset_index(drop=True)
+st.dataframe(
+    forecast_df.style.format({"Sales": "{:,.0f}"}),
+    use_container_width=True
+)
 
-    return temp
-
-
-def forecast_sales(ts_df: pd.DataFrame, periods: int = 6) -> pd.DataFrame:
-    """
-    Forecast future sales.
-    Uses Prophet if available, otherwise falls back to Linear Regression.
-    """
-
-    # ----------------------------
-    # Validate input
-    # ----------------------------
-    if "Date" not in ts_df.columns or "Sales" not in ts_df.columns:
-        raise ValueError("Time series must contain 'Date' and 'Sales' columns")
-
-    ts_df = ts_df.copy()
-
-    # ----------------------------
-    # TRY PROPHET (PRIMARY)
-    # ----------------------------
-    if PROPHET_AVAILABLE:
-        try:
-            prophet_df = ts_df.rename(
-                columns={
-                    "Date": "ds",
-                    "Sales": "y"
-                }
-            )
-
-            model = Prophet()
-            model.fit(prophet_df)
-
-            future = model.make_future_dataframe(
-                periods=periods,
-                freq="M"
-            )
-
-            forecast = model.predict(future)
-
-            result = forecast[["ds", "yhat"]].tail(periods)
-            result = result.rename(
-                columns={
-                    "ds": "Date",
-                    "yhat": "Sales"
-                }
-            )
-
-            return result.reset_index(drop=True)
-
-        except Exception:
-            # Prophet failed → fallback
-            pass
-
-    # ----------------------------
-    # FALLBACK: Linear Regression
-    # ----------------------------
-    ts_df["t"] = np.arange(len(ts_df))
-
-    X = ts_df[["t"]]
-    y = ts_df["Sales"]
-
-    model = LinearRegression()
-    model.fit(X, y)
-
-    future_t = np.arange(len(ts_df), len(ts_df) + periods)
-    future_sales = model.predict(future_t.reshape(-1, 1))
-
-    future_dates = pd.date_range(
-        start=ts_df["Date"].iloc[-1],
-        periods=periods + 1,
-        freq="M"
-    )[1:]
-
-    forecast_df = pd.DataFrame({
-        "Date": future_dates,
-        "Sales": future_sales
-    })
-
-    return forecast_df.reset_index(drop=True)
+# --------------------------------------------------
+# Summary
+# --------------------------------------------------
+st.success("Forecast generated successfully ✅")
