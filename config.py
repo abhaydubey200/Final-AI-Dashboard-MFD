@@ -7,7 +7,7 @@
 # App Identity
 # -------------------------------------------------
 APP_TITLE = "FMCG Executive Intelligence Dashboard"
-APP_TAGLINE = "Production-Grade FMCG & MFD Business Intelligence System"
+APP_TAGLINE = "FMCG & MFD Business Intelligence System"
 APP_ICON = "📊"
 LAYOUT = "wide"
 
