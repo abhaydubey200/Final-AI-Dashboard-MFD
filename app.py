@@ -1,138 +1,110 @@
 import streamlit as st
-import pandas as pd
+import os
 
-# --------------------------------------------------
-# PAGE CONFIG
-# --------------------------------------------------
-st.set_page_config(
-    page_title="DS Group FMCG AI Dashboard",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded",
+from config import (
+    APP_TITLE,
+    APP_TAGLINE,
+    APP_ICON,
+    LAYOUT,
+    SESSION_DF_KEY,
 )
 
-# --------------------------------------------------
-# SESSION STATE INITIALIZATION (CRITICAL)
-# --------------------------------------------------
-if "df" not in st.session_state:
-    st.session_state["df"] = None
+# -------------------------------------------------
+# PAGE CONFIG
+# -------------------------------------------------
+st.set_page_config(
+    page_title=APP_TITLE,
+    page_icon=APP_ICON,
+    layout=LAYOUT,
+)
 
-if "data_source" not in st.session_state:
-    st.session_state["data_source"] = None
-
-if "snowflake_conn" not in st.session_state:
-    st.session_state["snowflake_conn"] = None
-
-# --------------------------------------------------
-# SIDEBAR – BRANDING & STATUS
-# --------------------------------------------------
+# -------------------------------------------------
+# SIDEBAR UI (MNC LEVEL)
+# -------------------------------------------------
 with st.sidebar:
-    st.markdown(
-        """
-        <div style="text-align:center">
-            <h2 style="color:#1F7A4F;">DS GROUP</h2>
-            <p><b>FMCG AI Intelligence Platform</b></p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+
+    # SAFE LOGO LOAD
+    logo_path = "assets/ds_group_logo.png"
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=180)
+    else:
+        st.markdown("## 🏢 DS Group")
+
+    st.markdown(f"### {APP_TITLE}")
+    st.caption(APP_TAGLINE)
 
     st.divider()
 
-    # Data status
-    if st.session_state["df"] is not None:
+    # DATA STATUS
+    df = st.session_state.get(SESSION_DF_KEY)
+
+    if df is not None:
         st.success("✅ Data Loaded")
         st.caption(f"Source: {st.session_state.get('data_source', 'Unknown')}")
-        st.caption(f"Rows: {len(st.session_state['df']):,}")
+        st.caption(f"Rows: {df.shape[0]:,}")
+        st.caption(f"Columns: {df.shape[1]}")
     else:
-        st.warning("⚠ No data loaded")
+        st.warning("⚠ No Data Loaded")
+        st.caption("Go to **Upload Dataset**")
 
     st.divider()
 
-    st.caption("📌 Use sidebar navigation to explore dashboards")
+    # QUICK ACTIONS
+    if st.button("🔄 Reset Application"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
 
-# --------------------------------------------------
-# MAIN LANDING UI
-# --------------------------------------------------
+    st.caption("© DS Group | FMCG Executive Intelligence")
+
+# -------------------------------------------------
+# MAIN LANDING CONTENT
+# -------------------------------------------------
 st.markdown(
-    """
-    <h1 style="margin-bottom:0;">📊 FMCG Business Intelligence</h1>
-    <p style="color:gray; margin-top:4px;">
-        AI-powered analytics for Sales, Distribution, Pricing & Forecasting
-    </p>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.divider()
-
-# --------------------------------------------------
-# QUICK ACTION CARDS
-# --------------------------------------------------
-c1, c2, c3 = st.columns(3)
-
-with c1:
-    st.markdown(
-        """
-        ### 📤 Upload Data
-        Upload FMCG sales files (CSV / Excel) and instantly activate dashboards.
-        """
-    )
-    if st.button("Go to Upload Page ➜"):
-        st.switch_page("pages/0_Upload_Dataset.py")
-
-with c2:
-    st.markdown(
-        """
-        ### ❄️ Snowflake
-        Connect enterprise Snowflake warehouse and analyze data securely.
-        """
-    )
-    if st.button("Go to Snowflake Explorer ➜"):
-        st.switch_page("pages/12_Snowflake_Data_Explorer.py")
-
-with c3:
-    st.markdown(
-        """
-        ### 🧠 AI Analytics
-        Forecast demand, segment outlets, optimize pricing & performance.
-        """
-    )
-    if st.button("Open Executive Overview ➜"):
-        st.switch_page("pages/1_Executive_Overview.py")
-
-st.divider()
-
-# --------------------------------------------------
-# DATA PREVIEW (IF LOADED)
-# --------------------------------------------------
-if st.session_state["df"] is not None:
-    st.subheader("🔍 Active Dataset Preview")
-
-    st.dataframe(
-        st.session_state["df"].head(100),
-        width="stretch"
-    )
-
-    st.caption(
-        "This dataset is now shared across all dashboards."
-    )
-
-else:
-    st.info(
-        "ℹ️ Load data using **Upload Dataset** or **Snowflake** to activate analytics."
-    )
-
-# --------------------------------------------------
-# FOOTER
-# --------------------------------------------------
-st.markdown(
-    """
-    <hr>
-    <div style="text-align:center; color:gray;">
-        DS Group • AI FMCG Analytics Platform<br>
-        Built for enterprise-grade decision making
+    f"""
+    <div style="padding:20px;border-radius:12px;background:#F5F7FA">
+        <h2 style="margin-bottom:5px;">{APP_ICON} {APP_TITLE}</h2>
+        <p style="color:#333;">
+            {APP_TAGLINE}
+        </p>
     </div>
     """,
     unsafe_allow_html=True,
 )
+
+st.markdown("### 🚀 How to get started")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown(
+        """
+        **📤 Upload Dataset**
+        - CSV / Excel up to 2GB  
+        - Instant analytics  
+        - No credentials required
+        """
+    )
+
+with col2:
+    st.markdown(
+        """
+        **❄️ Snowflake Integration**
+        - Secure warehouse access  
+        - Auto DB / schema / table  
+        - SQL + Explorer support
+        """
+    )
+
+st.divider()
+
+# -------------------------------------------------
+# DATA GUARD (IMPORTANT)
+# -------------------------------------------------
+if df is None:
+    st.info(
+        "➡️ Please upload data or connect Snowflake using **Upload Dataset** page.\n\n"
+        "Once data is loaded, all dashboards will activate automatically."
+    )
+else:
+    st.success("🎯 Data is ready. Use the sidebar to navigate dashboards.")
