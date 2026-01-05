@@ -21,7 +21,7 @@ source = st.radio(
 if source == "Upload File":
 
     uploaded = st.file_uploader(
-        "Upload FMCG Dataset (CSV / Excel)",
+        "Upload MFD Dataset (CSV / Excel)",
         type=["csv", "xlsx"]
     )
 
