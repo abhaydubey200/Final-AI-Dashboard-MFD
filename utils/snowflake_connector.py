@@ -1,26 +1,25 @@
-# --------------------------------------------------
-# ❄️ Snowflake Connector Utility
-# --------------------------------------------------
-
-import streamlit as st
 import snowflake.connector
+import pandas as pd
 
-def get_snowflake_connection():
+
+def get_snowflake_connection(creds: dict):
     """
-    Create and return Snowflake connection using Streamlit secrets
+    Create and return a Snowflake connection
     """
+    return snowflake.connector.connect(
+        account=creds["account"],
+        user=creds["user"],
+        password=creds["password"],
+        warehouse=creds["warehouse"],
+        database=creds["database"],
+        schema=creds["schema"],
+        role=creds["role"],
+    )
 
-    try:
-        conn = snowflake.connector.connect(
-            user=st.secrets["snowflake"]["user"],
-            password=st.secrets["snowflake"]["password"],
-            account=st.secrets["snowflake"]["account"],
-            warehouse=st.secrets["snowflake"]["warehouse"],
-            database=st.secrets["snowflake"]["database"],
-            schema=st.secrets["snowflake"]["schema"],
-            role=st.secrets["snowflake"]["role"],
-        )
-        return conn
 
-    except Exception as e:
-        raise RuntimeError(f"Snowflake connection error: {e}")
+def fetch_table_df(conn, database, schema, table):
+    """
+    Load full Snowflake table into Pandas DataFrame
+    """
+    query = f'SELECT * FROM "{database}"."{schema}"."{table}"'
+    return pd.read_sql(query, conn)
