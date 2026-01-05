@@ -1,122 +1,104 @@
-# pages/6_Pricing_Analysis.py
-# -------------------------------------------------
-# Pricing & Discount Analysis
-# -------------------------------------------------
+# pages/6_Pricing_Discount_Analysis.py
+# --------------------------------------------------
+# 💸 Pricing & Discount Analysis (PRODUCTION SAFE)
+# --------------------------------------------------
 
 import streamlit as st
+import pandas as pd
+
 from utils.column_detector import auto_detect_columns
-from utils.pricing_metrics import *
-from utils.visualizations import *
+from utils.visualizations import bar_top
 
-# -------------------------------------------------
-# Page Config
-# -------------------------------------------------
-st.set_page_config(
-    page_title="Pricing & Discount Analysis | DS Group",
-    page_icon="💸",
-    layout="wide"
-)
-
-st.title("💸 Pricing & Discount Analysis")
+st.header("💸 Pricing & Discount Analysis")
 st.caption("Analyze discount impact on sales & pricing effectiveness")
 
-st.divider()
-
-# -------------------------------------------------
+# --------------------------------------------------
 # Load Dataset
-# -------------------------------------------------
+# --------------------------------------------------
 df = st.session_state.get("df")
 
 if df is None or df.empty:
-    st.warning("📤 Upload dataset or connect Snowflake first.")
+    st.warning("Please upload a dataset first.")
     st.stop()
 
-# -------------------------------------------------
-# Auto Detect Columns
-# -------------------------------------------------
+# --------------------------------------------------
+# Auto Detect Columns (OLD LOGIC)
+# --------------------------------------------------
 cols = auto_detect_columns(df)
 
-price_col = cols.get("price")
 sales_col = cols.get("sales")
+qty_col = cols.get("quantity")
 discount_col = cols.get("discount")
-date_col = cols.get("date")
+brand_col = cols.get("brand")
 
-# -------------------------------------------------
-# Validation (Backward Compatible)
-# -------------------------------------------------
-if not price_col:
-    st.warning("⚠ Price column not detected — pricing analysis unavailable.")
-    st.stop()
+# --------------------------------------------------
+# Derived Price (SAFE)
+# --------------------------------------------------
+df = df.copy()
 
-if not sales_col:
-    st.warning("⚠ Sales column not detected.")
-    st.stop()
+if sales_col and qty_col:
+    df["__unit_price__"] = df[sales_col] / df[qty_col].replace(0, pd.NA)
+else:
+    df["__unit_price__"] = None
 
-# -------------------------------------------------
-# KPIs
-# -------------------------------------------------
-st.subheader("📊 Pricing KPIs")
+# --------------------------------------------------
+# Pricing Distribution
+# --------------------------------------------------
+st.subheader("🏷 Pricing Distribution")
 
-k1, k2, k3 = st.columns(3)
-
-k1.metric(
-    "Average Selling Price",
-    f"₹{avg_price(df, price_col):,.2f}"
-)
-
-if discount_col:
-    k2.metric(
-        "Average Discount %",
-        f"{avg_discount(df, discount_col):.2f}%"
+if df["__unit_price__"].notna().any():
+    st.line_chart(
+        df["__unit_price__"].dropna(),
+        use_container_width=True
     )
 else:
-    k2.metric("Average Discount %", "N/A")
+    st.info("Unit price cannot be derived from available columns.")
 
-k3.metric(
-    "Revenue Impact",
-    f"₹{revenue_impact(df, price_col, sales_col):,.0f}"
-)
-
-# -------------------------------------------------
-# Price Distribution
-# -------------------------------------------------
-st.subheader("📈 Price Distribution")
-
-st.plotly_chart(
-    price_distribution(df, price_col),
-    use_container_width=True
-)
-
-# -------------------------------------------------
+# --------------------------------------------------
 # Discount Impact
-# -------------------------------------------------
-if discount_col:
-    st.subheader("🎯 Discount vs Sales Impact")
+# --------------------------------------------------
+st.subheader("📉 Discount Impact on Sales")
 
-    st.plotly_chart(
-        discount_vs_sales(df, discount_col, sales_col),
-        use_container_width=True
-    )
+if discount_col and sales_col:
+    try:
+        st.plotly_chart(
+            bar_top(
+                df,
+                discount_col,
+                sales_col,
+                "Sales by Discount Level"
+            ),
+            use_container_width=True
+        )
+    except Exception:
+        st.info("Unable to visualize discount impact.")
 else:
-    st.info("ℹ Discount column not available — skipping discount impact analysis.")
+    st.info("Discount column not detected.")
 
-# -------------------------------------------------
-# Trend Analysis
-# -------------------------------------------------
-if date_col:
-    st.subheader("📆 Price Trend Over Time")
+# --------------------------------------------------
+# Brand-wise Pricing
+# --------------------------------------------------
+st.subheader("🏷 Brand-wise Average Price")
 
-    st.plotly_chart(
-        price_trend(df, date_col, price_col),
-        use_container_width=True
-    )
+if brand_col and df["__unit_price__"].notna().any():
+    try:
+        avg_price = (
+            df.groupby(brand_col)["__unit_price__"]
+            .mean()
+            .sort_values(ascending=False)
+            .reset_index()
+        )
 
-# -------------------------------------------------
-# Business Insights
-# -------------------------------------------------
-st.info(
-    "📌 **Insights:**\n\n"
-    "- Detect price sensitivity and discount dependency\n"
-    "- Optimize pricing strategy across products & outlets\n"
-    "- Prevent margin erosion due to excessive discounting"
-)
+        st.bar_chart(
+            avg_price.set_index(brand_col),
+            use_container_width=True
+        )
+    except Exception:
+        st.info("Unable to compute brand pricing.")
+else:
+    st.info("Brand or pricing data not available.")
+
+# --------------------------------------------------
+# Success
+# --------------------------------------------------
+st.success("Pricing & Discount Analysis loaded successfully ✅")
