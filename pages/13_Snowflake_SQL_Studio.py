@@ -1,82 +1,66 @@
 import streamlit as st
 import pandas as pd
 
+from utils.snowflake_connector import get_snowflake_connection
+from utils.schema_normalizer import normalize_dataframe_schema
+
 st.set_page_config(page_title="Snowflake SQL Studio", layout="wide")
 
-st.title("🧪 Snowflake SQL Studio")
-st.caption("Run secure read-only SQL queries and load results into the application")
+st.header("❄️ Snowflake SQL Studio")
+st.caption("Run secure read-only SQL queries and load data into the application")
 
-# -------------------------------------------------
-# AUTH CHECK
-# -------------------------------------------------
-if not st.session_state.get("snowflake_logged"):
+# --------------------------------------------------
+# Connection check
+# --------------------------------------------------
+conn = st.session_state.get("snowflake_conn")
+
+if conn is None:
     st.warning("🔐 Login via Snowflake Data Ingestion first")
     st.stop()
 
-conn = st.session_state["snowflake_conn"]
-
-# -------------------------------------------------
-# SQL INPUT
-# -------------------------------------------------
+# --------------------------------------------------
+# SQL Editor
+# --------------------------------------------------
 query = st.text_area(
     "Write SELECT query only",
-    value="SELECT * FROM INFORMATION_SCHEMA.TABLES LIMIT 50",
-    height=180
+    height=180,
+    placeholder="SELECT * FROM MFD_DWH.MFD_SCHEMA.SALES_FACT LIMIT 100"
 )
 
-# -------------------------------------------------
-# BUTTONS
-# -------------------------------------------------
-col1, col2 = st.columns(2)
+run_query = st.button("▶ Run Query")
 
-run_preview = col1.button("▶ Run Query (Preview)")
-load_data = col2.button("📥 Load Data into Application")
+df_result = None
 
-# -------------------------------------------------
-# VALIDATION FUNCTION
-# -------------------------------------------------
-def validate_select_query(q: str):
-    return q.strip().lower().startswith("select")
-
-# -------------------------------------------------
-# PREVIEW MODE
-# -------------------------------------------------
-if run_preview:
-    if not validate_select_query(query):
+if run_query:
+    if not query.strip().lower().startswith("select"):
         st.error("❌ Only SELECT queries are allowed")
-        st.stop()
+    else:
+        try:
+            df_result = pd.read_sql(query, conn)
+            st.success(f"✅ Query executed successfully ({len(df_result)} rows)")
+        except Exception as e:
+            st.error(f"❌ Query execution failed: {e}")
 
-    try:
-        df_preview = pd.read_sql(query, conn)
-        df_preview = df_preview.astype(str)  # Arrow-safe
+# --------------------------------------------------
+# Preview
+# --------------------------------------------------
+if df_result is not None and not df_result.empty:
+    st.subheader("🔍 Query Result Preview")
+    st.dataframe(df_result, width="stretch")
 
-        st.success("✅ Query executed successfully (Preview)")
-        st.dataframe(df_preview, width="stretch")
+# --------------------------------------------------
+# LOAD DATA INTO APPLICATION (CRITICAL FIX)
+# --------------------------------------------------
+if df_result is not None and not df_result.empty:
+    if st.button("📥 Load Data into Application"):
+        try:
+            df_final = normalize_dataframe_schema(df_result)
 
-    except Exception as e:
-        st.error(f"❌ Query execution failed: {e}")
+            st.session_state["df"] = df_final
+            st.session_state["data_source"] = "snowflake"
+            st.session_state["schema_normalized"] = True
 
-# -------------------------------------------------
-# LOAD INTO APPLICATION
-# -------------------------------------------------
-if load_data:
-    if not validate_select_query(query):
-        st.error("❌ Only SELECT queries are allowed")
-        st.stop()
+            st.success("✅ Data loaded successfully. All dashboards are now active.")
 
-    try:
-        df_final = pd.read_sql(query, conn)
-
-        # Store into app session (GLOBAL)
-        st.session_state["df"] = df_final
-        st.session_state["data_source"] = "snowflake"
-        st.session_state["active_table"] = "SQL Studio Result"
-
-        st.success("🎉 Data successfully loaded into application!")
-        st.info("You can now navigate to other dashboards")
-
-        # Show sample
-        st.dataframe(df_final.head(100).astype(str), width="stretch")
-
-    except Exception as e:
-        st.error(f"❌ Failed to load data into app: {e}")
+        except Exception as e:
+            st.error(f"❌ Failed to load data into application: {e}")
