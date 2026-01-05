@@ -1,156 +1,138 @@
-# -------------------------------------------------
-# DS Group – FMCG Executive Intelligence Dashboard
-# Main App Entry (Production Ready)
-# -------------------------------------------------
-
-import os
 import streamlit as st
+import pandas as pd
 
-from config import (
-    APP_TITLE,
-    APP_TAGLINE,
-    APP_ICON,
-    LAYOUT,
-    SESSION_DF_KEY
-)
-
-# -------------------------------------------------
-# Page Configuration (GLOBAL)
-# -------------------------------------------------
+# --------------------------------------------------
+# PAGE CONFIG
+# --------------------------------------------------
 st.set_page_config(
-    page_title=APP_TITLE,
-    page_icon=APP_ICON,
-    layout=LAYOUT,
-    initial_sidebar_state="expanded"
+    page_title="DS Group FMCG AI Dashboard",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# -------------------------------------------------
-# Sidebar Branding (SAFE FOR CLOUD)
-# -------------------------------------------------
-LOGO_PATH = os.path.join(os.getcwd(), "assets", "ds_group_logo.png")
+# --------------------------------------------------
+# SESSION STATE INITIALIZATION (CRITICAL)
+# --------------------------------------------------
+if "df" not in st.session_state:
+    st.session_state["df"] = None
 
+if "data_source" not in st.session_state:
+    st.session_state["data_source"] = None
+
+if "snowflake_conn" not in st.session_state:
+    st.session_state["snowflake_conn"] = None
+
+# --------------------------------------------------
+# SIDEBAR – BRANDING & STATUS
+# --------------------------------------------------
 with st.sidebar:
-    if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, use_container_width=True)
-    else:
-        st.markdown(
-            """
-            <h3 style="margin-bottom:0">DS Group</h3>
-            <p style="font-size:12px;color:#666">
-                FMCG Executive Intelligence
-            </p>
-            """,
-            unsafe_allow_html=True
-        )
-
-    st.markdown("---")
-
     st.markdown(
-        f"""
-        <b>{APP_TITLE}</b><br>
-        <span style="font-size:12px;color:#666">
-            {APP_TAGLINE}
-        </span>
+        """
+        <div style="text-align:center">
+            <h2 style="color:#1F7A4F;">DS GROUP</h2>
+            <p><b>FMCG AI Intelligence Platform</b></p>
+        </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
-# -------------------------------------------------
-# Session State Initialization (CRITICAL)
-# -------------------------------------------------
-if SESSION_DF_KEY not in st.session_state:
-    st.session_state[SESSION_DF_KEY] = None
+    st.divider()
 
-if "data" not in st.session_state:
-    st.session_state["data"] = None
+    # Data status
+    if st.session_state["df"] is not None:
+        st.success("✅ Data Loaded")
+        st.caption(f"Source: {st.session_state.get('data_source', 'Unknown')}")
+        st.caption(f"Rows: {len(st.session_state['df']):,}")
+    else:
+        st.warning("⚠ No data loaded")
 
-if "source" not in st.session_state:
-    st.session_state["source"] = None  # upload | snowflake
+    st.divider()
 
-# -------------------------------------------------
-# Main Landing UI
-# -------------------------------------------------
+    st.caption("📌 Use sidebar navigation to explore dashboards")
+
+# --------------------------------------------------
+# MAIN LANDING UI
+# --------------------------------------------------
 st.markdown(
     """
-    <style>
-        .hero-title {
-            font-size: 34px;
-            font-weight: 800;
-            color: #000;
-        }
-        .hero-subtitle {
-            font-size: 16px;
-            color: #555;
-            margin-bottom: 20px;
-        }
-        .hero-card {
-            background: #ffffff;
-            padding: 22px;
-            border-radius: 18px;
-            border: 1px solid #e6e6e6;
-            box-shadow: 0 8px 22px rgba(0,0,0,0.06);
-        }
-    </style>
+    <h1 style="margin-bottom:0;">📊 FMCG Business Intelligence</h1>
+    <p style="color:gray; margin-top:4px;">
+        AI-powered analytics for Sales, Distribution, Pricing & Forecasting
+    </p>
     """,
-    unsafe_allow_html=True
-)
-
-st.markdown(
-    f"""
-    <div class="hero-title">{APP_ICON} {APP_TITLE}</div>
-    <div class="hero-subtitle">{APP_TAGLINE}</div>
-    """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 st.divider()
 
-# -------------------------------------------------
-# App Status Section
-# -------------------------------------------------
-st.markdown('<div class="hero-card">', unsafe_allow_html=True)
+# --------------------------------------------------
+# QUICK ACTION CARDS
+# --------------------------------------------------
+c1, c2, c3 = st.columns(3)
 
-if st.session_state.get(SESSION_DF_KEY) is None:
-    st.warning(
-        "📤 **No dataset loaded yet.**\n\n"
-        "Please start with **Upload Dataset** or connect via **Snowflake** "
-        "from the left sidebar to activate analytics pages."
+with c1:
+    st.markdown(
+        """
+        ### 📤 Upload Data
+        Upload FMCG sales files (CSV / Excel) and instantly activate dashboards.
+        """
     )
+    if st.button("Go to Upload Page ➜"):
+        st.switch_page("pages/0_Upload_Dataset.py")
+
+with c2:
+    st.markdown(
+        """
+        ### ❄️ Snowflake
+        Connect enterprise Snowflake warehouse and analyze data securely.
+        """
+    )
+    if st.button("Go to Snowflake Explorer ➜"):
+        st.switch_page("pages/12_Snowflake_Data_Explorer.py")
+
+with c3:
+    st.markdown(
+        """
+        ### 🧠 AI Analytics
+        Forecast demand, segment outlets, optimize pricing & performance.
+        """
+    )
+    if st.button("Open Executive Overview ➜"):
+        st.switch_page("pages/1_Executive_Overview.py")
+
+st.divider()
+
+# --------------------------------------------------
+# DATA PREVIEW (IF LOADED)
+# --------------------------------------------------
+if st.session_state["df"] is not None:
+    st.subheader("🔍 Active Dataset Preview")
+
+    st.dataframe(
+        st.session_state["df"].head(100),
+        width="stretch"
+    )
+
+    st.caption(
+        "This dataset is now shared across all dashboards."
+    )
+
 else:
-    st.success(
-        f"✅ **Dataset Loaded Successfully**\n\n"
-        f"Source: **{st.session_state.get('source', 'Unknown')}**\n\n"
-        f"Rows: **{len(st.session_state[SESSION_DF_KEY]):,}**"
+    st.info(
+        "ℹ️ Load data using **Upload Dataset** or **Snowflake** to activate analytics."
     )
 
-st.markdown('</div>', unsafe_allow_html=True)
-
-# -------------------------------------------------
-# Navigation Help
-# -------------------------------------------------
-st.markdown(
-    """
-    ### 🧭 How to Use This Platform
-
-    **Step 1️⃣** Upload data or connect Snowflake  
-    **Step 2️⃣** Explore KPI & Sales Dashboards  
-    **Step 3️⃣** Analyze Outlets, Warehouses & Pricing  
-    **Step 4️⃣** Use AI Forecasting & Actionable Insights  
-
-    👉 Use the **left sidebar** to navigate across modules.
-    """
-)
-
-# -------------------------------------------------
-# Footer
-# -------------------------------------------------
+# --------------------------------------------------
+# FOOTER
+# --------------------------------------------------
 st.markdown(
     """
     <hr>
-    <div style="text-align:center;font-size:12px;color:#777;">
-        © DS Group • FMCG Executive Intelligence Platform<br>
-        Built for enterprise-scale decision making
+    <div style="text-align:center; color:gray;">
+        DS Group • AI FMCG Analytics Platform<br>
+        Built for enterprise-grade decision making
     </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
