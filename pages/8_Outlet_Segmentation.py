@@ -1,170 +1,153 @@
+# pages/8_Outlet_Segmentation.py
+# --------------------------------------------------
+# 🏪 Outlet Segmentation & Risk Profiling (PRODUCTION)
+# --------------------------------------------------
+
 import streamlit as st
-import plotly.express as px
 import pandas as pd
+import plotly.express as px
 
-from config import SESSION_DF_KEY
-from utils.segmentation import (
-    prepare_outlet_features,
-    segment_outlets
-)
 from utils.column_detector import auto_detect_columns
+from utils.segmentation import segment_outlets
 
-# -------------------------------------------------
-# Page Config
-# -------------------------------------------------
-st.set_page_config(
-    page_title="Outlet Segmentation",
-    layout="wide"
+st.header("🏪 Outlet Segmentation & Risk Profiling")
+st.caption(
+    "AI-driven outlet clustering to optimize distribution strategy, schemes, credit policy, and field-force focus."
 )
 
-# -------------------------------------------------
-# Load Data
-# -------------------------------------------------
-df = st.session_state.get(SESSION_DF_KEY)
+# --------------------------------------------------
+# Load Dataset
+# --------------------------------------------------
+df = st.session_state.get("df")
 
 if df is None or df.empty:
-    st.warning("📥 Upload dataset or connect Snowflake first.")
+    st.warning("Please upload a dataset first.")
     st.stop()
 
-# -------------------------------------------------
-# Header
-# -------------------------------------------------
-st.title("🏪 Outlet Segmentation & Risk Profiling")
-st.markdown(
-    "AI-driven outlet clustering to optimize **distribution strategy, schemes, "
-    "credit policy, and field-force focus**."
-)
+# --------------------------------------------------
+# Auto Detect Columns
+# --------------------------------------------------
+cols = auto_detect_columns(df)
 
-st.divider()
+outlet_col = cols.get("outlet")
+sales_col = cols.get("sales")
+qty_col = cols.get("quantity")
+date_col = cols.get("date")
 
-# -------------------------------------------------
-# Segmentation Controls
-# -------------------------------------------------
-with st.expander("⚙ Segmentation Configuration", expanded=True):
-
-    clusters = st.slider(
-        "Number of Outlet Segments",
-        min_value=2,
-        max_value=6,
-        value=3
-    )
-
-# -------------------------------------------------
-# Prepare Outlet Features
-# -------------------------------------------------
-outlet_df = prepare_outlet_features(df)
-
-if outlet_df.empty:
-    st.error("❌ Unable to prepare outlet-level features.")
+if not outlet_col:
+    st.error("Outlet column not detected in dataset.")
     st.stop()
 
-# -------------------------------------------------
-# Apply Segmentation
-# -------------------------------------------------
-segmented_df = segment_outlets(outlet_df, n_clusters=clusters)
+# --------------------------------------------------
+# Feature Engineering (SAFE)
+# --------------------------------------------------
+features = df.copy()
 
-# -------------------------------------------------
-# Risk Scoring (NEW – Executive Requirement)
-# -------------------------------------------------
-if "Total_Sales" in segmented_df.columns:
-    segmented_df["Risk_Score"] = pd.qcut(
-        segmented_df["Total_Sales"],
-        q=3,
-        labels=["High Risk", "Medium Risk", "Low Risk"]
-    )
-else:
-    segmented_df["Risk_Score"] = "Unknown"
+if date_col:
+    features[date_col] = pd.to_datetime(features[date_col], errors="coerce")
 
-# -------------------------------------------------
-# KPIs
-# -------------------------------------------------
-st.markdown("## 📌 Segmentation KPIs")
+agg_map = {}
 
-k1, k2, k3 = st.columns(3)
+if sales_col:
+    agg_map[sales_col] = "sum"
+if qty_col:
+    agg_map[qty_col] = "sum"
+if date_col:
+    agg_map[date_col] = "max"
 
-k1.metric(
-    "Total Outlets",
-    segmented_df.shape[0]
-)
-
-k2.metric(
-    "High Value Outlets",
-    (segmented_df["Segment_Label"] == "High Value").sum()
-)
-
-k3.metric(
-    "High Risk Outlets",
-    (segmented_df["Risk_Score"] == "High Risk").sum()
-)
-
-st.divider()
-
-# -------------------------------------------------
-# Segmented Table
-# -------------------------------------------------
-st.markdown("## 📋 Outlet Segmentation Table")
-
-st.dataframe(
-    segmented_df.sort_values(
-        by="Total_Sales" if "Total_Sales" in segmented_df.columns else segmented_df.columns[0],
-        ascending=False
-    ),
-    use_container_width=True
-)
-
-# -------------------------------------------------
-# Visualization
-# -------------------------------------------------
-numeric_cols = segmented_df.select_dtypes(include="number").columns.tolist()
-
-if len(numeric_cols) >= 2:
-    st.markdown("## 📊 Outlet Cluster Visualization")
-
-    fig = px.scatter(
-        segmented_df,
-        x=numeric_cols[0],
-        y=numeric_cols[1],
-        color="Segment_Label",
-        symbol="Risk_Score",
-        hover_data=[segmented_df.columns[0]],
-        title="Outlet Segments with Risk Overlay"
-    )
-
-    fig.update_layout(template="plotly_white")
-
-    st.plotly_chart(fig, use_container_width=True)
-
-# -------------------------------------------------
-# Segment Summary
-# -------------------------------------------------
-st.markdown("## 📈 Segment Performance Summary")
-
-summary = (
-    segmented_df
-    .groupby("Segment_Label")[numeric_cols]
-    .mean()
-    .round(2)
+outlet_df = (
+    features.groupby(outlet_col)
+    .agg(agg_map)
     .reset_index()
 )
 
-st.dataframe(summary, use_container_width=True)
+# Rename for consistency
+rename_map = {}
+if sales_col:
+    rename_map[sales_col] = "Total_Sales"
+if qty_col:
+    rename_map[qty_col] = "Total_Quantity"
+if date_col:
+    rename_map[date_col] = "Last_Order_Date"
 
-# -------------------------------------------------
-# Executive Insight
-# -------------------------------------------------
-st.success(
-    """
-🧠 **Executive Insight**
+outlet_df.rename(columns=rename_map, inplace=True)
 
-• Focus schemes & credit on **High Value / Medium Risk** outlets  
-• Deploy field-force aggressively on **High Risk outlets**  
-• Rationalize effort on consistently **Low Value outlets**
+# --------------------------------------------------
+# Risk Scoring (NEW – EXECUTIVE GRADE)
+# --------------------------------------------------
+if "Last_Order_Date" in outlet_df.columns:
+    outlet_df["Days_Since_Last_Order"] = (
+        pd.Timestamp.today() - outlet_df["Last_Order_Date"]
+    ).dt.days
 
-This segmentation directly improves **ROI per outlet**.
-"""
+    outlet_df["Risk_Score"] = pd.cut(
+        outlet_df["Days_Since_Last_Order"],
+        bins=[-1, 30, 60, 9999],
+        labels=["Low Risk", "Medium Risk", "High Risk"]
+    )
+else:
+    outlet_df["Risk_Score"] = "Unknown"
+
+# --------------------------------------------------
+# Segmentation Controls
+# --------------------------------------------------
+st.subheader("⚙ Segmentation Configuration")
+
+clusters = st.slider(
+    "Number of Outlet Segments",
+    min_value=2,
+    max_value=6,
+    value=3
 )
 
-# -------------------------------------------------
-# Footer
-# -------------------------------------------------
-st.caption("Outlet Intelligence Engine • DS Group FMCG Analytics Platform")
+# --------------------------------------------------
+# Apply Segmentation
+# --------------------------------------------------
+try:
+    segmented_df = segment_outlets(outlet_df, clusters)
+except Exception as e:
+    st.error("Segmentation failed due to insufficient numeric features.")
+    st.exception(e)
+    st.stop()
+
+# --------------------------------------------------
+# KPI Summary
+# --------------------------------------------------
+st.subheader("📊 Segment KPIs")
+
+k1, k2, k3 = st.columns(3)
+
+k1.metric("Total Outlets", segmented_df.shape[0])
+k2.metric("High Risk Outlets", (segmented_df["Risk_Score"] == "High Risk").sum())
+k3.metric("Total Sales", f"₹ {segmented_df.get('Total_Sales', pd.Series()).sum():,.0f}")
+
+# --------------------------------------------------
+# Segmentation Visualization
+# --------------------------------------------------
+num_cols = segmented_df.select_dtypes("number").columns.tolist()
+
+if len(num_cols) >= 2:
+    fig = px.scatter(
+        segmented_df,
+        x=num_cols[0],
+        y=num_cols[1],
+        color="Segment",
+        hover_data=[outlet_col, "Risk_Score"],
+        title="Outlet Clusters"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# --------------------------------------------------
+# Segmented Table
+# --------------------------------------------------
+st.subheader("📋 Outlet Segmentation Table")
+
+st.dataframe(segmented_df, use_container_width=True)
+
+# --------------------------------------------------
+# Business Insight
+# --------------------------------------------------
+st.success(
+    "Outlet segmentation and risk profiling completed successfully. "
+    "Use High-Risk outlets for credit tightening and Medium-Risk for scheme optimization."
+)
