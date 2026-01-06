@@ -1,188 +1,164 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import numpy as np
 
 from config import SESSION_DF_KEY, CURRENCY_SYMBOL
 from utils.column_detector import auto_detect_columns
+from utils.safe_dataframe import prepare_daily_sales_df
 
-# -------------------------------------------------
-# Page Config
-# -------------------------------------------------
+# =================================================
+# PAGE CONFIG
+# =================================================
 st.set_page_config(
-    page_title="Advanced Daily Analysis",
-    layout="wide"
+    page_title="Advanced Daily Sales Analysis",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# -------------------------------------------------
-# Load Data
-# -------------------------------------------------
+# =================================================
+# LOAD DATA
+# =================================================
 df = st.session_state.get(SESSION_DF_KEY)
 
 if df is None or df.empty:
-    st.warning("📥 Upload dataset or connect Snowflake first.")
+    st.warning("📥 Please upload data or connect Snowflake to continue.")
     st.stop()
 
-# -------------------------------------------------
-# Header
-# -------------------------------------------------
-st.title("📊 Advanced Daily Sales Intelligence")
-st.markdown(
-    "Deep **trend, seasonality, and anomaly analysis** for executive decision-making."
+# =================================================
+# HEADER
+# =================================================
+st.title("📈 Advanced Daily Sales Analysis")
+st.caption(
+    "Granular daily performance tracking with rolling averages and volatility signals"
 )
-
 st.divider()
 
-# -------------------------------------------------
-# Auto Detect Columns
-# -------------------------------------------------
+# =================================================
+# AUTO COLUMN DETECTION
+# =================================================
 cols = auto_detect_columns(df)
+
 date_col = cols.get("date")
 sales_col = cols.get("sales")
 
 if not date_col or not sales_col:
-    st.error("❌ Date or Sales column not detected.")
+    st.error("❌ Required Date or Sales column not detected.")
     st.stop()
 
-# -------------------------------------------------
-# Daily Aggregation
-# -------------------------------------------------
-daily_df = df.copy()
-daily_df[date_col] = pd.to_datetime(daily_df[date_col])
-
-daily_df = (
-    daily_df
-    .groupby(pd.Grouper(key=date_col, freq="D"))
-    .agg(Daily_Sales=(sales_col, "sum"))
-    .reset_index()
-    .rename(columns={date_col: "Date"})
+# =================================================
+# DATA PREPARATION (ENTERPRISE SAFE)
+# =================================================
+daily_df = prepare_daily_sales_df(
+    df=df,
+    date_col=date_col,
+    sales_col=sales_col
 )
 
-daily_df.sort_values("Date", inplace=True)
+if daily_df.empty:
+    st.error("❌ No valid daily sales data after normalization.")
+    st.stop()
 
-# -------------------------------------------------
-# Rolling Averages
-# -------------------------------------------------
-daily_df["MA_7"] = daily_df["Daily_Sales"].rolling(7).mean()
-daily_df["MA_14"] = daily_df["Daily_Sales"].rolling(14).mean()
-daily_df["MA_30"] = daily_df["Daily_Sales"].rolling(30).mean()
+# =================================================
+# KPI ROW
+# =================================================
+col1, col2, col3, col4 = st.columns(4)
 
-# -------------------------------------------------
-# Rolling Trend Chart
-# -------------------------------------------------
-st.markdown("## 📈 Rolling Sales Trend")
+total_sales = daily_df["Daily_Sales"].sum()
+avg_daily_sales = daily_df["Daily_Sales"].mean()
+max_sales = daily_df["Daily_Sales"].max()
+min_sales = daily_df["Daily_Sales"].min()
 
-fig1 = px.line(
-    daily_df,
-    x="Date",
-    y=["Daily_Sales", "MA_7", "MA_14", "MA_30"],
-    title="Daily Sales with Rolling Averages"
-)
-
-fig1.update_layout(template="plotly_white")
-st.plotly_chart(fig1, use_container_width=True)
+col1.metric("Total Sales", f"{CURRENCY_SYMBOL}{total_sales:,.0f}")
+col2.metric("Avg Daily Sales", f"{CURRENCY_SYMBOL}{avg_daily_sales:,.0f}")
+col3.metric("Highest Day", f"{CURRENCY_SYMBOL}{max_sales:,.0f}")
+col4.metric("Lowest Day", f"{CURRENCY_SYMBOL}{min_sales:,.0f}")
 
 st.divider()
 
-# -------------------------------------------------
-# Seasonality Analysis (Day of Week)
-# -------------------------------------------------
-daily_df["Day_Name"] = daily_df["Date"].dt.day_name()
+# =================================================
+# DAILY SALES TREND
+# =================================================
+st.subheader("📊 Daily Sales Trend with Rolling Averages")
 
-dow_df = (
-    daily_df
-    .groupby("Day_Name", as_index=False)
-    .agg(Avg_Sales=("Daily_Sales", "mean"))
+fig = px.line(
+    daily_df,
+    x=date_col,
+    y=["Daily_Sales", "7D_Rolling_Avg", "14D_Rolling_Avg"],
+    labels={
+        "value": "Sales Amount",
+        "variable": "Metric",
+        date_col: "Date"
+    },
+    title="Daily Sales with 7 & 14 Day Rolling Averages",
 )
 
-dow_df["Day_Name"] = pd.Categorical(
-    dow_df["Day_Name"],
-    categories=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
-    ordered=True
+fig.update_layout(
+    hovermode="x unified",
+    legend_title_text="Metrics",
+    height=500
 )
 
-dow_df.sort_values("Day_Name", inplace=True)
+st.plotly_chart(fig, width="stretch")
 
-st.markdown("## 🗓️ Day-of-Week Seasonality")
+# =================================================
+# VOLATILITY & BUSINESS SIGNALS
+# =================================================
+st.subheader("⚠️ Volatility & Business Signals")
 
-fig2 = px.bar(
-    dow_df,
-    x="Day_Name",
-    y="Avg_Sales",
-    title="Average Sales by Day of Week"
-)
+daily_df["Daily_Change_%"] = daily_df["Daily_Sales"].pct_change() * 100
 
-fig2.update_layout(template="plotly_white")
-st.plotly_chart(fig2, use_container_width=True)
+high_volatility_days = daily_df[
+    daily_df["Daily_Change_%"].abs() > 25
+]
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("**📉 High Volatility Days**")
+    if high_volatility_days.empty:
+        st.success("No abnormal volatility detected.")
+    else:
+        st.dataframe(
+            high_volatility_days[
+                [date_col, "Daily_Sales", "Daily_Change_%"]
+            ].rename(columns={
+                "Daily_Sales": "Sales",
+                "Daily_Change_%": "Change %"
+            }),
+            width="stretch"
+        )
+
+with col2:
+    st.markdown("**🧠 Executive Interpretation**")
+    if not high_volatility_days.empty:
+        st.warning(
+            "Significant daily fluctuations detected. "
+            "Possible drivers include promotions, stock-outs, "
+            "route changes, or distributor behavior."
+        )
+    else:
+        st.success(
+            "Sales movement appears stable with no extreme deviations."
+        )
 
 st.divider()
 
-# -------------------------------------------------
-# Peak & Low Demand Detection
-# -------------------------------------------------
-st.markdown("## 🚦 Peak & Low Demand Signals")
-
-high_threshold = daily_df["Daily_Sales"].quantile(0.90)
-low_threshold = daily_df["Daily_Sales"].quantile(0.10)
-
-daily_df["Demand_Flag"] = np.where(
-    daily_df["Daily_Sales"] >= high_threshold, "Peak",
-    np.where(daily_df["Daily_Sales"] <= low_threshold, "Low", "Normal")
-)
-
-fig3 = px.scatter(
-    daily_df,
-    x="Date",
-    y="Daily_Sales",
-    color="Demand_Flag",
-    title="Peak & Low Demand Detection"
-)
-
-fig3.update_layout(template="plotly_white")
-st.plotly_chart(fig3, use_container_width=True)
-
-st.divider()
-
-# -------------------------------------------------
-# Anomaly Detection (Simple Statistical)
-# -------------------------------------------------
-st.markdown("## 🚨 Sales Anomaly Detection")
-
-mean_sales = daily_df["Daily_Sales"].mean()
-std_sales = daily_df["Daily_Sales"].std()
-
-daily_df["Anomaly"] = np.where(
-    abs(daily_df["Daily_Sales"] - mean_sales) > 2 * std_sales,
-    "Anomaly",
-    "Normal"
-)
-
-fig4 = px.scatter(
-    daily_df,
-    x="Date",
-    y="Daily_Sales",
-    color="Anomaly",
-    title="Sales Anomaly Detection"
-)
-
-fig4.update_layout(template="plotly_white")
-st.plotly_chart(fig4, use_container_width=True)
-
-# -------------------------------------------------
-# Executive Insight
-# -------------------------------------------------
+# =================================================
+# BUSINESS SUMMARY
+# =================================================
 st.success(
     """
-🧠 **Executive Insights**
+### 🧾 Executive Summary
 
-• Rolling averages smooth volatility and expose **true demand direction**  
-• Day-of-week seasonality helps optimize **route planning & manpower**  
-• Peak/low flags enable **proactive inventory & logistics decisions**  
-• Anomalies highlight potential **supply disruption or reporting issues**
+This analysis provides **day-level sales visibility** with trend smoothing
+to identify **underlying performance patterns** while filtering short-term noise.
+
+**Recommended Usage:**
+- Daily leadership review  
+- Route & beat performance validation  
+- Promotion effectiveness tracking  
+- Supply disruption detection  
 """
 )
 
-# -------------------------------------------------
-# Footer
-# -------------------------------------------------
-st.caption("Advanced Daily Intelligence • DS Group FMCG Analytics Platform")
+st.caption("Advanced Daily Analysis • DS Group FMCG Intelligence Platform")
