@@ -1,94 +1,51 @@
-import streamlit as st
-import plotly.express as px
-
-from utils.safe_dataframe import prepare_daily_sales_df
-from utils.helpers import get_loaded_dataframe
+import pandas as pd
 
 
-st.set_page_config(
-    page_title="Advanced Daily Analysis",
-    layout="wide"
-)
+def prepare_daily_sales_df(df: pd.DataFrame, date_col: str, sales_col: str) -> pd.DataFrame:
+    """
+    Enterprise-safe daily aggregation
+    - Date normalization
+    - Numeric safety
+    - Daily aggregation
+    - Rolling averages
+    """
 
-st.title("📈 Advanced Daily Sales Analysis")
-st.caption("Daily trends, rolling performance & executive-level insights")
+    data = df.copy()
 
-# ------------------------------------
-# LOAD DATA
-# ------------------------------------
-df = get_loaded_dataframe()
+    # --------------------
+    # DATE NORMALIZATION
+    # --------------------
+    data[date_col] = pd.to_datetime(data[date_col], errors="coerce")
+    data = data.dropna(subset=[date_col])
 
-if df is None or df.empty:
-    st.warning("Please upload FMCG data to view analysis.")
-    st.stop()
-
-# ------------------------------------
-# COLUMN DETECTION
-# ------------------------------------
-DATE_COL = "ORDER_DATE"
-SALES_COL = "AMOUNT"
-
-if DATE_COL not in df.columns or SALES_COL not in df.columns:
-    st.error("Required columns ORDER_DATE or AMOUNT not found.")
-    st.stop()
-
-# ------------------------------------
-# PREPARE DATA (SAFE)
-# ------------------------------------
-try:
-    daily_df = prepare_daily_sales_df(
-        df=df,
-        date_col=DATE_COL,
-        sales_col=SALES_COL
+    # --------------------
+    # SALES NORMALIZATION
+    # --------------------
+    data[sales_col] = (
+        data[sales_col]
+        .astype(str)
+        .str.replace(",", "", regex=False)
     )
-except Exception as e:
-    st.error("Daily aggregation failed.")
-    st.exception(e)
-    st.stop()
+    data[sales_col] = pd.to_numeric(data[sales_col], errors="coerce")
+    data = data.dropna(subset=[sales_col])
 
-# ------------------------------------
-# KPI ROW
-# ------------------------------------
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric(
-        "Total Sales",
-        f"₹{daily_df['Daily_Sales'].sum():,.0f}"
+    # --------------------
+    # DAILY AGGREGATION
+    # --------------------
+    daily_df = (
+        data
+        .groupby(pd.Grouper(key=date_col, freq="D"))[sales_col]
+        .sum()
+        .reset_index()
     )
 
-with col2:
-    st.metric(
-        "Avg Daily Sales",
-        f"₹{daily_df['Daily_Sales'].mean():,.0f}"
-    )
+    daily_df.columns = ["Date", "Daily_Sales"]
+    daily_df = daily_df.sort_values("Date")
 
-with col3:
-    st.metric(
-        "Active Days",
-        f"{daily_df['Date'].nunique()}"
-    )
+    # --------------------
+    # ROLLING AVERAGES
+    # --------------------
+    daily_df["7D_Rolling_Avg"] = daily_df["Daily_Sales"].rolling(7, min_periods=1).mean()
+    daily_df["14D_Rolling_Avg"] = daily_df["Daily_Sales"].rolling(14, min_periods=1).mean()
 
-st.divider()
-
-# ------------------------------------
-# DAILY SALES TREND
-# ------------------------------------
-fig = px.line(
-    daily_df,
-    x="Date",
-    y=["Daily_Sales", "7D_Rolling_Avg", "14D_Rolling_Avg"],
-    title="Daily Sales with Rolling Averages",
-    labels={
-        "value": "Sales Amount",
-        "variable": "Metric"
-    }
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-# ------------------------------------
-# DATA PREVIEW
-# ------------------------------------
-with st.expander("📄 View Daily Aggregated Data"):
-    st.dataframe(daily_df, use_container_width=True)
+    return daily_df
