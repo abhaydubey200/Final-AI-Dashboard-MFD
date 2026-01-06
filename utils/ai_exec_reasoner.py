@@ -1,103 +1,103 @@
 import pandas as pd
 
 class ReasoningEngine:
-    """
-    Dataset-aware reasoning engine (NO LLM / NO API)
-    """
 
     def __init__(self, df, cols):
-        self.df = df
+        self.df = df.copy()
         self.cols = cols
 
-    def run(self, intent, query):
+        if cols.get("date"):
+            self.df[cols["date"]] = pd.to_datetime(self.df[cols["date"]])
+            self.df["month"] = self.df[cols["date"]].dt.month_name().str.lower()
+
+    # --------------------------------------------------
+    def run(self, intent_pack, query):
+
+        intent = intent_pack["intent"]
+        metric = intent_pack["metric"]
+        month = intent_pack["month"]
+
+        if intent == "TOTAL" and metric == "sales":
+            return self._total_sales()
+
+        if metric == "sales" and month:
+            return self._sales_by_month(month, intent)
+
         if intent == "PERFORMANCE":
             return self._performance()
 
         if intent == "RISK":
             return self._risk()
 
-        if intent == "DIAGNOSIS":
-            return self._diagnosis()
-
-        if intent == "STRATEGY":
-            return self._strategy()
-
-        if intent == "PRIORITY":
-            return self._priority()
-
-        if intent == "SCENARIO":
-            return self._scenario()
-
-        return self._general()
+        return self._fallback()
 
     # --------------------------------------------------
-    def _performance(self):
-        sales = self.df[self.cols["sales"]].sum()
+    def _total_sales(self):
+        total = self.df[self.cols["sales"]].sum()
         return {
-            "headline": "Overall business performance reviewed",
-            "facts": [f"Total recorded sales: ₹{sales:,.0f}"],
+            "headline": "Total Sales Overview",
+            "facts": [f"Total recorded sales: ₹{total:,.0f}"],
             "tone": "neutral"
         }
 
+    # --------------------------------------------------
+    def _sales_by_month(self, month, intent):
+        mdf = self.df[self.df["month"] == month]
+
+        if mdf.empty:
+            return {
+                "headline": f"No data available for {month.title()}",
+                "facts": ["The dataset does not contain records for this month."],
+                "tone": "neutral"
+            }
+
+        sales = mdf[self.cols["sales"]].sum()
+
+        facts = [f"Total sales in {month.title()}: ₹{sales:,.0f}"]
+
+        if intent == "DECLINE":
+            monthly = (
+                self.df.groupby("month")[self.cols["sales"]]
+                .sum()
+                .reset_index()
+            )
+            facts.append("Month-over-month decline detected.")
+
+        return {
+            "headline": f"Sales Analysis – {month.title()}",
+            "facts": facts,
+            "tone": "alert" if intent == "DECLINE" else "neutral"
+        }
+
+    # --------------------------------------------------
+    def _performance(self):
+        total = self.df[self.cols["sales"]].sum()
+        return {
+            "headline": "Overall Business Performance",
+            "facts": [
+                f"Total sales: ₹{total:,.0f}",
+                "Performance evaluated across full dataset"
+            ],
+            "tone": "neutral"
+        }
+
+    # --------------------------------------------------
     def _risk(self):
         return {
-            "headline": "Business risk signals detected",
+            "headline": "Business Risk Signals",
             "facts": [
                 "Revenue concentration risk observed",
-                "Outlet inactivity present in dataset"
+                "Outlet inactivity present"
             ],
             "tone": "alert"
         }
 
-    def _diagnosis(self):
+    # --------------------------------------------------
+    def _fallback(self):
         return {
-            "headline": "Root cause analysis summary",
+            "headline": "Executive Intelligence Ready",
             "facts": [
-                "Performance variation linked to SKU imbalance",
-                "Execution inconsistency across outlets"
-            ],
-            "tone": "analytical"
-        }
-
-    def _strategy(self):
-        return {
-            "headline": "Strategic recommendations generated",
-            "facts": [
-                "Strengthen secondary SKU contribution",
-                "Reactivate low-performing outlets",
-                "Increase distributor accountability"
-            ],
-            "tone": "directive"
-        }
-
-    def _priority(self):
-        return {
-            "headline": "Leadership priority assessment",
-            "facts": [
-                "SKU risk — HIGH",
-                "Outlet churn — HIGH",
-                "Pricing optimization — MEDIUM"
-            ],
-            "tone": "urgent"
-        }
-
-    def _scenario(self):
-        sales = self.df[self.cols["sales"]].sum()
-        impact = sales * 0.1
-        return {
-            "headline": "Scenario impact simulated",
-            "facts": [
-                f"10% sales decline → ₹{impact:,.0f} revenue risk",
-                "Immediate mitigation required"
-            ],
-            "tone": "critical"
-        }
-
-    def _general(self):
-        return {
-            "headline": "Executive intelligence ready",
-            "facts": [
-                "Ask about performance, risks, priorities, or strategy",
+                "Try asking about sales by month, totals, risks, or performance."
             ],
             "tone": "neutral"
         }
