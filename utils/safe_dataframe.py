@@ -1,16 +1,25 @@
 import pandas as pd
-import numpy as np
 
 
 def prepare_daily_sales_df(df, date_col, sales_col):
     """
-    Enterprise-safe daily sales preparation
-    - Cleans dates
-    - Ensures numeric sales
-    - Aggregates daily
-    - Adds rolling averages
-    - Prevents Plotly wide-form crashes
+    Enterprise-safe daily sales preparation utility.
+
+    Guarantees:
+    - Stable column names
+    - Numeric-only Plotly inputs
+    - No Pandas groupby column loss
+    - No Streamlit Cloud crashes
     """
+
+    if df is None or df.empty:
+        raise ValueError("Dataset is empty")
+
+    if date_col not in df.columns:
+        raise ValueError(f"Missing date column: {date_col}")
+
+    if sales_col not in df.columns:
+        raise ValueError(f"Missing sales column: {sales_col}")
 
     data = df.copy()
 
@@ -21,7 +30,6 @@ def prepare_daily_sales_df(df, date_col, sales_col):
         data[date_col],
         errors="coerce"
     )
-
     data = data.dropna(subset=[date_col])
 
     # -----------------------------
@@ -37,7 +45,6 @@ def prepare_daily_sales_df(df, date_col, sales_col):
         data[sales_col],
         errors="coerce"
     )
-
     data = data.dropna(subset=[sales_col])
 
     # -----------------------------
@@ -45,22 +52,23 @@ def prepare_daily_sales_df(df, date_col, sales_col):
     # -----------------------------
     daily_df = (
         data
-        .groupby(pd.Grouper(key=date_col, freq="D"), as_index=False)
-        .agg({"{}".format(sales_col): "sum"})
+        .groupby(pd.Grouper(key=date_col, freq="D"))[sales_col]
+        .sum()
+        .reset_index()
     )
 
-    daily_df.rename(
-        columns={sales_col: "Daily_Sales"},
-        inplace=True
-    )
+    # -----------------------------
+    # CANONICAL COLUMN NAMES
+    # -----------------------------
+    daily_df.columns = ["Date", "Daily_Sales"]
 
     # -----------------------------
     # SORTING
     # -----------------------------
-    daily_df = daily_df.sort_values(date_col)
+    daily_df = daily_df.sort_values("Date")
 
     # -----------------------------
-    # ROLLING AVERAGES
+    # ROLLING METRICS
     # -----------------------------
     daily_df["7D_Rolling_Avg"] = (
         daily_df["Daily_Sales"]
