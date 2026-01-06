@@ -1,14 +1,10 @@
 import streamlit as st
-import pandas as pd
-
 from config import SESSION_DF_KEY
 from utils.column_detector import auto_detect_columns
-from utils.business_signal_engine import detect_business_signals
-from utils.priority_badges import priority_badge
-from utils.ai_reasoning_engine import build_reasoned_response
+from utils.ai_exec_engine import ExecutiveAIEngine
 
 # -------------------------------------------------
-# PAGE CONFIG
+# Page Config
 # -------------------------------------------------
 st.set_page_config(
     page_title="AI Executive Copilot",
@@ -16,119 +12,44 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# LOAD DATA
+# Load Data
 # -------------------------------------------------
 df = st.session_state.get(SESSION_DF_KEY)
 
 if df is None or df.empty:
-    st.warning("📥 Upload dataset first to activate AI Executive Copilot.")
+    st.warning("📥 Upload data to activate AI Executive Copilot.")
     st.stop()
 
+cols = auto_detect_columns(df)
+ai_engine = ExecutiveAIEngine(df, cols)
+
 # -------------------------------------------------
-# HEADER
+# Header
 # -------------------------------------------------
-st.title("🤖 AI Executive Copilot")
-st.caption("DS Group • CEO & Board-Level Intelligence Assistant")
+st.title("🧠 AI Executive Copilot")
+st.markdown(
+    "Enterprise-grade AI for **decision-ready answers** based on uploaded business data."
+)
 
 st.divider()
 
 # -------------------------------------------------
-# AUTO PROFILE DATA
+# Chat Interface
 # -------------------------------------------------
-cols = auto_detect_columns(df)
-numeric_cols = [v for v in cols.values() if v and df[v].dtype != "object"]
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-profile = {
-    "rows": len(df),
-    "columns": df.shape[1],
-    "numeric_cols": numeric_cols
-}
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-# -------------------------------------------------
-# SESSION CHAT MEMORY
-# -------------------------------------------------
-if "ai_chat" not in st.session_state:
-    st.session_state.ai_chat = []
+user_query = st.chat_input("Ask a business question (e.g. Total sales, Top SKUs)")
 
-# -------------------------------------------------
-# INPUT
-# -------------------------------------------------
-user_question = st.chat_input(
-    "Ask anything about your business performance..."
-)
+if user_query:
+    st.session_state.messages.append({"role": "user", "content": user_query})
 
-# -------------------------------------------------
-# AI RESPONSE ENGINE
-# -------------------------------------------------
-def ai_answer(question: str) -> str:
-    q = question.lower()
+    with st.chat_message("assistant"):
+        response = ai_engine.execute(user_query)
+        st.markdown(response)
 
-    signals = detect_business_signals(df, numeric_cols)
-
-    # ---------- CEO SUMMARY ----------
-    if "summary" in q or "overview" in q:
-        response = f"""
-## 🧾 CEO EXECUTIVE SUMMARY
-
-This dataset represents **{profile['rows']:,} business records** across key FMCG dimensions.
-
-### Key Business Signals
-"""
-
-        for s in signals[:3]:
-            response += f"""
-{priority_badge(s['priority'])}  
-**{s['metric']}**
-• {s['signal']}
-"""
-
-        response += """
-### Leadership Guidance
-Focus attention on **high-volatility drivers**, execution consistency, and risk containment.
-
-*Prepared for board-level discussion.*
-"""
-        return response
-
-    # ---------- RISK ----------
-    if "risk" in q:
-        high_risk = [s for s in signals if s["priority"] == "High"]
-
-        if not high_risk:
-            return "🟢 No critical risks detected. Business performance is currently stable."
-
-        response = "## 🚨 BUSINESS RISK ASSESSMENT\n"
-        for s in high_risk:
-            response += build_reasoned_response(s)
-
-        return response
-
-    # ---------- GENERAL ANALYSIS ----------
-    response = "## 📊 BUSINESS ANALYSIS\n"
-    for s in signals[:2]:
-        response += build_reasoned_response(s)
-
-    response += """
-### Suggested Next Questions
-• "Give CEO summary"
-• "What are my biggest risks?"
-• "Which metric needs attention?"
-"""
-    return response
-
-# -------------------------------------------------
-# CHAT LOOP
-# -------------------------------------------------
-if user_question:
-    st.session_state.ai_chat.append(("user", user_question))
-    answer = ai_answer(user_question)
-    st.session_state.ai_chat.append(("ai", answer))
-
-# -------------------------------------------------
-# DISPLAY CHAT
-# -------------------------------------------------
-for role, msg in st.session_state.ai_chat:
-    if role == "user":
-        st.chat_message("user").markdown(msg)
-    else:
-        st.chat_message("assistant").markdown(msg)
+    st.session_state.messages.append({"role": "assistant", "content": response})
