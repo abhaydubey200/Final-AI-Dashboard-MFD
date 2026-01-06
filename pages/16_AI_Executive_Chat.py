@@ -1,238 +1,270 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import timedelta
 
-from config import (
-    SESSION_DF_KEY,
-    CURRENCY_SYMBOL,
-    NUMBER_FORMAT,
-)
+from config import SESSION_DF_KEY, CURRENCY_SYMBOL
 
-# =================================================
+# =========================================================
 # PAGE CONFIG
-# =================================================
+# =========================================================
 st.set_page_config(
     page_title="AI Executive Assistant",
-    layout="wide",
+    layout="wide"
 )
 
-# =================================================
+# =========================================================
 # LOAD DATA
-# =================================================
+# =========================================================
 df = st.session_state.get(SESSION_DF_KEY)
 
 if df is None or df.empty:
-    st.warning("📥 Upload dataset first to activate AI Executive Assistant.")
+    st.warning("📥 Upload dataset to activate AI Executive Assistant.")
     st.stop()
 
-# =================================================
-# STANDARDIZE COLUMNS
-# =================================================
 df.columns = [c.upper() for c in df.columns]
+df["ORDER_DATE"] = pd.to_datetime(df["ORDER_DATE"], errors="coerce")
 
-# =================================================
+# =========================================================
+# SESSION CHAT MEMORY
+# =========================================================
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+if "suggested_followups" not in st.session_state:
+    st.session_state.suggested_followups = []
+
+# =========================================================
 # HEADER
-# =================================================
+# =========================================================
 st.markdown(
     """
-    <div style="padding:18px;border-radius:14px;background:#F5F7FA">
+    <div style="padding:20px;border-radius:14px;background:#F5F7FA">
         <h2>🧠 AI Executive Assistant</h2>
         <p style="color:#333">
             Enterprise decision intelligence • Boardroom-ready • DS Group AI
         </p>
     </div>
     """,
-    unsafe_allow_html=True,
+    unsafe_allow_html=True
 )
 
 st.divider()
 
-# =================================================
-# AUTO-SUGGEST QUESTION CHIPS
-# =================================================
-st.markdown("### 💡 Suggested Executive Questions")
+# =========================================================
+# INITIAL AUTO-SUGGEST (ONLY WHEN CHAT EMPTY)
+# =========================================================
+if not st.session_state.chat_history:
+    st.markdown("### 💡 Suggested Questions")
 
-SUGGESTED_QUESTIONS = [
-    "Total sales",
-    "Overall business performance",
-    "Sales by month",
-    "Top SKUs by revenue",
-    "Outlet inactivity risk",
-    "Revenue concentration risk",
-    "Rejected orders summary",
-    "Discount impact on revenue",
-    "Best performing zone",
-    "Worst performing outlet",
-]
+    starters = [
+        "Total sales",
+        "Overall business performance",
+        "Sales by month",
+        "Top SKUs by revenue",
+        "Outlet inactivity risk",
+        "Revenue concentration risk",
+        "Rejected orders summary",
+    ]
 
-chip_cols = st.columns(len(SUGGESTED_QUESTIONS))
+    cols = st.columns(len(starters))
+    for i, q in enumerate(starters):
+        if cols[i].button(q):
+            st.session_state.chat_history.append(("user", q))
 
-selected_question = None
-for i, q in enumerate(SUGGESTED_QUESTIONS):
-    if chip_cols[i].button(q):
-        selected_question = q
+# =========================================================
+# CHAT INPUT
+# =========================================================
+user_input = st.chat_input("Ask anything about sales, outlets, SKUs, risks, performance...")
 
-st.divider()
+if user_input:
+    st.session_state.chat_history.append(("user", user_input))
 
-# =================================================
-# USER QUESTION INPUT
-# =================================================
-user_question = st.text_input(
-    "Ask any question about your business data",
-    value=selected_question if selected_question else "",
-    placeholder="e.g. total sales, outlet risk, sku performance",
-)
+# =========================================================
+# CORE ANALYTICS ENGINE
+# =========================================================
+def generate_response(question: str):
+    q = question.lower()
+    followups = []
 
-if not user_question:
-    st.stop()
+    # ---------------- TOTAL SALES ----------------
+    if "total sales" in q or "revenue" in q:
+        total_sales = df["AMOUNT"].sum()
 
-q = user_question.lower()
+        response = f"""
+📊 **Total Sales Overview**
 
-# =================================================
-# HELPER FUNCTIONS
-# =================================================
-def format_currency(val):
-    return f"{CURRENCY_SYMBOL}{val:,.0f}"
+Total recorded sales: **{CURRENCY_SYMBOL}{total_sales:,.0f}**
 
-def executive_note():
-    st.caption(
-        "Executive Note: This insight is derived directly from current dataset signals "
-        "and is suitable for leadership decision-making."
-    )
+**Executive Note:**  
+This represents the gross realized revenue across all orders in the dataset.
+"""
 
-# =================================================
-# INTENT ENGINE (RULE-BASED)
-# =================================================
-st.markdown("### 📊 Executive Intelligence Output")
+        followups = [
+            "Sales by month",
+            "Top SKUs by revenue",
+            "Discount impact on revenue",
+        ]
 
-# -------------------------------------------------
-# TOTAL SALES
-# -------------------------------------------------
-if "total sales" in q or "revenue" in q:
-    total_sales = df["AMOUNT"].sum()
+    # ---------------- PERFORMANCE ----------------
+    elif "performance" in q:
+        response = f"""
+📊 **Overall Business Performance**
 
-    st.success("📊 Total Sales Overview")
-    st.metric("Total Recorded Sales", format_currency(total_sales))
-    executive_note()
+• Total Sales: **{CURRENCY_SYMBOL}{df['AMOUNT'].sum():,.0f}**  
+• Total Orders: **{df['ORDER_ID'].nunique():,}**  
+• Active Outlets: **{df['OUTLET_ID'].nunique():,}**
 
-# -------------------------------------------------
-# TOTAL ORDERS
-# -------------------------------------------------
-elif "total orders" in q or "order count" in q:
-    total_orders = df["ORDER_ID"].nunique()
+**Executive Note:**  
+Performance is evaluated using sales volume, order throughput, and outlet coverage.
+"""
 
-    st.success("📦 Order Volume Summary")
-    st.metric("Total Orders", f"{total_orders:,}")
-    executive_note()
+        followups = [
+            "Best performing zone",
+            "Worst performing outlet",
+            "Outlet inactivity risk",
+        ]
 
-# -------------------------------------------------
-# OVERALL PERFORMANCE
-# -------------------------------------------------
-elif "performance" in q or "business performance" in q:
-    sales = df["AMOUNT"].sum()
-    orders = df["ORDER_ID"].nunique()
-    outlets = df["OUTLET_ID"].nunique()
+    # ---------------- MONTHLY SALES ----------------
+    elif "month" in q:
+        monthly = (
+            df.groupby(df["ORDER_DATE"].dt.to_period("M"))["AMOUNT"]
+            .sum()
+            .reset_index()
+        )
 
-    st.success("📊 Overall Business Performance")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Sales", format_currency(sales))
-    col2.metric("Orders", f"{orders:,}")
-    col3.metric("Active Outlets", f"{outlets:,}")
+        last_growth = monthly["AMOUNT"].pct_change().iloc[-1] * 100 if len(monthly) > 1 else 0
 
-    executive_note()
+        response = f"""
+📈 **Monthly Sales Trend**
 
-# -------------------------------------------------
-# SALES BY MONTH
-# -------------------------------------------------
-elif "sales by month" in q or "monthly sales" in q:
-    df["ORDER_DATE"] = pd.to_datetime(df["ORDER_DATE"])
-    monthly = (
-        df.groupby(df["ORDER_DATE"].dt.to_period("M"))["AMOUNT"]
-        .sum()
-        .reset_index()
-    )
+Latest month growth: **{last_growth:.2f}%**
 
-    st.success("📈 Monthly Sales Performance")
-    st.dataframe(monthly.rename(columns={"AMOUNT": "Monthly Sales"}))
-    executive_note()
+**Executive Note:**  
+Month-over-month trends highlight demand momentum and early risk signals.
+"""
 
-# -------------------------------------------------
-# TOP SKUS
-# -------------------------------------------------
-elif "top sku" in q or "sku performance" in q:
-    sku_perf = (
-        df.groupby("SKU_PLACED")["AMOUNT"]
-        .sum()
-        .sort_values(ascending=False)
-        .head(10)
-    )
+        followups = [
+            "Sales drop analysis",
+            "Seasonality impact",
+            "Compare last two months",
+        ]
 
-    st.success("🏆 Top SKUs by Revenue")
-    st.dataframe(sku_perf.reset_index())
-    executive_note()
+    # ---------------- SKU PERFORMANCE ----------------
+    elif "sku" in q:
+        top_sku = (
+            df.groupby("SKU_PLACED")["AMOUNT"]
+            .sum()
+            .sort_values(ascending=False)
+            .head(1)
+        )
 
-# -------------------------------------------------
-# OUTLET INACTIVITY
-# -------------------------------------------------
-elif "outlet inactivity" in q or "inactive outlet" in q:
-    df["ORDER_DATE"] = pd.to_datetime(df["ORDER_DATE"])
-    last_date = df["ORDER_DATE"].max()
-    last_order = df.groupby("OUTLET_ID")["ORDER_DATE"].max()
-    inactive = last_order[last_order < last_date - pd.Timedelta(days=30)]
+        response = f"""
+🏷 **SKU Performance Insight**
 
-    st.warning("⚠️ Outlet Inactivity Risk Detected")
-    st.metric("Inactive Outlets (>30 days)", len(inactive))
-    executive_note()
+Top SKU by revenue: **{top_sku.index[0]}**  
+Revenue: **{CURRENCY_SYMBOL}{top_sku.iloc[0]:,.0f}**
 
-# -------------------------------------------------
-# REVENUE CONCENTRATION
-# -------------------------------------------------
-elif "concentration" in q or "dependency" in q:
-    sku_sales = df.groupby("SKU_PLACED")["AMOUNT"].sum()
-    top_share = sku_sales.max() / sku_sales.sum() * 100
+**Executive Note:**  
+Revenue concentration at SKU level may indicate dependency risk.
+"""
 
-    st.warning("⚠️ Revenue Concentration Risk")
-    st.metric("Top SKU Contribution (%)", f"{top_share:.1f}%")
-    executive_note()
+        followups = [
+            "Revenue concentration risk",
+            "Bottom performing SKUs",
+            "SKU discount analysis",
+        ]
 
-# -------------------------------------------------
-# REJECTED ORDERS
-# -------------------------------------------------
-elif "rejected" in q:
-    rejected = df[df["ORDERSTATE"].str.contains("reject", case=False, na=False)]
-    rate = len(rejected) / len(df) * 100
+    # ---------------- OUTLET RISK ----------------
+    elif "outlet" in q and "risk" in q:
+        last_date = df["ORDER_DATE"].max()
+        inactive = df.groupby("OUTLET_ID")["ORDER_DATE"].max()
+        inactive = inactive[inactive < last_date - timedelta(days=30)]
 
-    st.warning("🚫 Order Rejection Summary")
-    st.metric("Rejection Rate", f"{rate:.2f}%")
-    executive_note()
+        response = f"""
+⚠️ **Outlet Inactivity Risk**
 
-# -------------------------------------------------
-# DISCOUNT IMPACT
-# -------------------------------------------------
-elif "discount" in q:
-    total_discount = df["DISCOUNT_AMOUNT"].sum()
-    total_sales = df["AMOUNT"].sum()
+Inactive outlets (>30 days): **{len(inactive)}**
 
-    st.info("💸 Discount Impact Analysis")
-    st.metric("Total Discount Given", format_currency(total_discount))
-    st.metric("Discount % of Sales", f"{(total_discount/total_sales)*100:.2f}%")
-    executive_note()
+**Executive Note:**  
+Inactive outlets pose churn and revenue leakage risks.
+"""
 
-# -------------------------------------------------
-# FALLBACK
-# -------------------------------------------------
-else:
-    st.info("📊 Executive intelligence ready")
-    st.markdown(
-        """
-        Try asking about:
-        - Sales
-        - Orders
-        - SKUs
-        - Outlets
-        - Risks
-        - Performance
-        """
-    )
-    executive_note()
+        followups = [
+            "High potential outlet performance",
+            "City-wise outlet contribution",
+            "Outlet reactivation strategy",
+        ]
+
+    # ---------------- REJECTION ----------------
+    elif "reject" in q:
+        rejected = df[df["ORDERSTATE"].str.contains("reject", case=False, na=False)]
+        rate = len(rejected) / len(df) * 100
+
+        response = f"""
+🚫 **Order Rejection Analysis**
+
+Rejection rate: **{rate:.2f}%**
+
+**Executive Note:**  
+Rejections impact fulfillment efficiency and customer trust.
+"""
+
+        followups = [
+            "Rejection reasons",
+            "Warehouse rejection comparison",
+            "Revenue impact of rejections",
+        ]
+
+    # ---------------- FALLBACK ----------------
+    else:
+        response = """
+📊 **Executive Intelligence Ready**
+
+Ask about:
+• Sales & revenue  
+• Orders & rejections  
+• SKUs & brands  
+• Outlets & geography  
+• Risks & performance
+"""
+
+        followups = [
+            "Total sales",
+            "Overall performance",
+            "Top SKUs by revenue",
+        ]
+
+    return response, followups
+
+# =========================================================
+# CHAT RENDERING
+# =========================================================
+for role, msg in st.session_state.chat_history:
+    with st.chat_message(role):
+        st.markdown(msg)
+
+# =========================================================
+# PROCESS LAST USER MESSAGE
+# =========================================================
+if st.session_state.chat_history and st.session_state.chat_history[-1][0] == "user":
+    question = st.session_state.chat_history[-1][1]
+    answer, followups = generate_response(question)
+
+    with st.chat_message("assistant"):
+        st.markdown(answer)
+
+    st.session_state.chat_history.append(("assistant", answer))
+    st.session_state.suggested_followups = followups
+
+# =========================================================
+# FOLLOW-UP SUGGESTIONS (COPILOT STYLE)
+# =========================================================
+if st.session_state.suggested_followups:
+    st.markdown("### 🔍 Suggested follow-ups")
+    cols = st.columns(len(st.session_state.suggested_followups))
+
+    for i, q in enumerate(st.session_state.suggested_followups):
+        if cols[i].button(q, key=f"follow_{i}"):
+            st.session_state.chat_history.append(("user", q))
+            st.rerun()
