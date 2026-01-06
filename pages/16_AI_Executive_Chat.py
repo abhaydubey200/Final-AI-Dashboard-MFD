@@ -1,135 +1,76 @@
-import pandas as pd
+import streamlit as st
+from config import SESSION_DF_KEY
+from utils.column_detector import auto_detect_columns
+from utils.ai_exec_intent import detect_intent
+from utils.ai_exec_reasoner import ReasoningEngine
+from utils.ai_exec_responder import ResponseComposer
 
-class ExecutiveStrategyEngine:
-    """
-    CXO-Level Strategy & Decision Engine
-    Converts data → decisions → actions
-    """
+# --------------------------------------------------
+# PAGE CONFIG
+# --------------------------------------------------
+st.set_page_config(
+    page_title="AI Executive Chat",
+    layout="wide"
+)
 
-    def __init__(self, df, cols):
-        self.df = df
-        self.cols = cols
+# --------------------------------------------------
+# DATA GUARD
+# --------------------------------------------------
+df = st.session_state.get(SESSION_DF_KEY)
 
-    # --------------------------------------------------
-    # INTENT DETECTION
-    # --------------------------------------------------
-    def detect_intent(self, query: str):
-        q = query.lower()
+if df is None or df.empty:
+    st.warning("📥 Upload dataset or connect Snowflake to activate Executive AI.")
+    st.stop()
 
-        if any(k in q for k in ["what should", "recommend", "action plan", "strategy"]):
-            return "STRATEGY"
+cols = auto_detect_columns(df)
 
-        if any(k in q for k in ["priority", "focus", "urgent"]):
-            return "PRIORITY"
+# --------------------------------------------------
+# INIT AI SYSTEM
+# --------------------------------------------------
+reasoner = ReasoningEngine(df, cols)
+responder = ResponseComposer()
 
-        if any(k in q for k in ["what if", "scenario", "impact"]):
-            return "SCENARIO"
+# --------------------------------------------------
+# HEADER
+# --------------------------------------------------
+st.title("🤖 AI Executive Assistant")
+st.caption(
+    "Enterprise decision intelligence • Boardroom-ready • DS Group AI"
+)
 
-        return None
+st.divider()
 
-    # --------------------------------------------------
-    # MAIN EXECUTOR
-    # --------------------------------------------------
-    def execute(self, query: str):
-        intent = self.detect_intent(query)
+# --------------------------------------------------
+# CHAT MEMORY
+# --------------------------------------------------
+if "ai_chat" not in st.session_state:
+    st.session_state.ai_chat = []
 
-        if intent == "STRATEGY":
-            return self._strategy_actions()
+# --------------------------------------------------
+# USER INPUT
+# --------------------------------------------------
+user_input = st.chat_input(
+    "Ask anything about sales, risk, performance, strategy, or scenarios..."
+)
 
-        if intent == "PRIORITY":
-            return self._priority_matrix()
+if user_input:
+    st.session_state.ai_chat.append(("user", user_input))
 
-        if intent == "SCENARIO":
-            return self._scenario_analysis()
+    intent = detect_intent(user_input)
+    reasoning = reasoner.run(intent, user_input)
+    final_response = responder.compose(intent, reasoning)
 
-        return None
+    st.session_state.ai_chat.append(("assistant", final_response))
 
-    # --------------------------------------------------
-    # STRATEGY ENGINE
-    # --------------------------------------------------
-    def _strategy_actions(self):
-        sales_col = self.cols["sales"]
-        sku_col = self.cols.get("sku")
-        outlet_col = self.cols.get("outlet")
+# --------------------------------------------------
+# CHAT RENDER
+# --------------------------------------------------
+for role, message in st.session_state.ai_chat:
+    with st.chat_message(role):
+        st.markdown(message)
 
-        actions = []
-
-        if sku_col:
-            sku_sales = self.df.groupby(sku_col)[sales_col].sum()
-            if sku_sales.max() / sku_sales.sum() > 0.40:
-                actions.append("Reduce over-dependence on top SKU by scaling secondary SKUs")
-
-        if outlet_col:
-            outlet_sales = self.df.groupby(outlet_col)[sales_col].sum()
-            low_perf = (outlet_sales < outlet_sales.mean()).sum()
-            if low_perf > 0:
-                actions.append("Launch outlet reactivation & incentive programs")
-
-        actions.append("Strengthen distributor execution & stock visibility")
-        actions.append("Increase leadership review cadence for next 60 days")
-
-        bullets = "\n".join([f"{i+1}. {a}" for i, a in enumerate(actions)])
-
-        return f"""
-## 🎯 Executive Strategy Recommendations
-
-**Immediate Actions**
-{bullets}
-
-**Execution Horizon**
-• Tactical impact: 30 days  
-• Strategic impact: 60–90 days  
-
-**Risk of Inaction**
-Sustained revenue leakage and execution inefficiency.
-"""
-
-    # --------------------------------------------------
-    # PRIORITY MATRIX
-    # --------------------------------------------------
-    def _priority_matrix(self):
-        return """
-## 🔥 Leadership Priority Matrix
-
-### HIGH PRIORITY
-• SKU concentration risk  
-• Outlet churn risk  
-• Distribution execution gaps  
-
-### MEDIUM PRIORITY
-• Pricing optimization  
-• Regional performance imbalance  
-
-### LOW PRIORITY
-• Long-tail SKU rationalization  
-
-**CEO Directive**
-Close HIGH priorities within 30 days.
-"""
-
-    # --------------------------------------------------
-    # SCENARIO ENGINE
-    # --------------------------------------------------
-    def _scenario_analysis(self):
-        sales_col = self.cols["sales"]
-        total_sales = self.df[sales_col].sum()
-        impact = total_sales * 0.10
-
-        return f"""
-## 📉 Scenario Analysis: 10% Sales Decline
-
-**Estimated Revenue Impact**
-₹{impact:,.0f}
-
-**Probable Causes**
-• Distribution leakage  
-• Demand slowdown  
-• SKU fatigue  
-
-**Mitigation Plan**
-• Tactical trade schemes  
-• Focused SKU push  
-• Outlet-level incentives  
-
-**Decision Urgency**: HIGH
-"""
+# --------------------------------------------------
+# FOOTER
+# --------------------------------------------------
+st.divider()
+st.caption("DS Group • AI Executive Intelligence Platform")
