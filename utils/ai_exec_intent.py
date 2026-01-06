@@ -1,22 +1,35 @@
-def detect_intent(query: str) -> str:
+import re
+
+MONTHS = [
+    "january","february","march","april","may","june",
+    "july","august","september","october","november","december"
+]
+
+def detect_intent(query: str) -> dict:
     q = query.lower()
 
-    if any(k in q for k in ["trend", "performance", "growth", "decline"]):
-        return "PERFORMANCE"
+    intent = "GENERAL"
+    metric = None
+    month = None
 
-    if any(k in q for k in ["risk", "problem", "issue", "drop"]):
-        return "RISK"
+    if "sale" in q or "revenue" in q:
+        metric = "sales"
 
-    if any(k in q for k in ["why", "cause", "reason"]):
-        return "DIAGNOSIS"
+    for m in MONTHS:
+        if m in q:
+            month = m
 
-    if any(k in q for k in ["what should", "recommend", "strategy", "action"]):
-        return "STRATEGY"
+    if any(k in q for k in ["drop", "decline", "fall"]):
+        intent = "DECLINE"
+    elif "total" in q:
+        intent = "TOTAL"
+    elif "performance" in q:
+        intent = "PERFORMANCE"
+    elif "risk" in q:
+        intent = "RISK"
 
-    if any(k in q for k in ["priority", "focus", "urgent"]):
-        return "PRIORITY"
-
-    if any(k in q for k in ["what if", "scenario", "impact"]):
-        return "SCENARIO"
-
-    return "GENERAL"
+    return {
+        "intent": intent,
+        "metric": metric,
+        "month": month
+    }
