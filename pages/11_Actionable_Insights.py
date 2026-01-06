@@ -179,7 +179,7 @@ with c3:
 # =================================================
 if ENABLE_AI_SUMMARY:
     st.divider()
-    st.subheader("🤖 AI-Generated CEO Summary")
+    st.subheader("🤖 AI-Generated Summary")
 
     summary_text = f"""
 **Overall Business Health:** {priority_level.replace('🔴','').replace('🟠','').replace('🟢','')}
@@ -189,8 +189,6 @@ if ENABLE_AI_SUMMARY:
 • Revenue concentration {'is high' if top_sku_share and top_sku_share > 40 else 'remains within acceptable limits'}.
 • Outlet churn risk requires {'immediate attention' if priority_score >= 7 else 'continuous monitoring'}.
 
-**CEO Recommendation:**  
-Prioritize execution discipline in the short term while protecting growth levers. Immediate focus should be on demand recovery, outlet reactivation, and SKU portfolio balance.
 """
     st.success(summary_text)
 
