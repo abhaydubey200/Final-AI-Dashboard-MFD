@@ -59,7 +59,7 @@ else:
             cur.fetchone()
 
             st.success("✅ Snowflake connected successfully")
-            st.info("➡️ Use Snowflake Explorer or SQL Studio to load data")
+            st.info("➡️ SQL Studio to load data")
 
         except Exception as e:
             st.error(f"❌ Snowflake connection failed: {e}")
