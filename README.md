@@ -43,77 +43,9 @@ The platform is deployed on Streamlit Cloud and designed to support:
 
 🏗️ Architecture Overview
 
-User (Browser)
-   │
-   ▼
-Streamlit UI (app.py)
-   │
-   ├── Pages (16 analytics modules)
-   │
-   ├── Core Engines
-   │     ├─ Intent Engine
-   │     ├─ Metric Engine
-   │     ├─ Response Formatter
-   │
-   ├── Utils Layer
-   │     ├─ Data Processing
-   │     ├─ KPI Calculations
-   │     ├─ Risk Scoring
-   │     ├─ Business Signals
-   │
-   └── Data Layer
-         ├─ Upload (CSV / Excel)
-         └─ Snowflake (Read-only)
-
 ✔ Fully deterministic
 ✔ Auditable logic
 ✔ Enterprise-safe
-
-⸻
-
-📂 Project Structure
-
-.
-├── app.py
-├── config.py
-├── requirements.txt
-├── assets/
-│   ├── ds_group_favicon.png
-│   └── style.css
-├── core/
-│   ├── data_registry.py
-│   ├── intent_engine.py
-│   ├── metric_engine.py
-│   └── response_formatter.py
-├── pages/
-│   ├── 0_Upload_Dataset.py
-│   ├── 1_Executive_Overview.py
-│   ├── 2_Sales_Performance.py
-│   ├── 3_Product_SKU_Brand.py
-│   ├── 4_Outlet_Distribution.py
-│   ├── 5_Field_Force_Productivity.py
-│   ├── 6_Order_Operations.py
-│   ├── 7_Sales_Forecasting.py
-│   ├── 8_Outlet_Segmentation.py
-│   ├── 9_Daily_Sales_Analysis.py
-│   ├── 10_Advanced_Daily_Analysis.py
-│   ├── 11_Actionable_Insights.py
-│   ├── 13_Snowflake_SQL_Studio.py
-│   ├── 14_Data_Quality_Monitor.py
-│   └── 16_AI_Executive_Chat.py
-└── utils/
-    ├── data_loader.py
-    ├── data_processing.py
-    ├── metrics.py
-    ├── kpis.py
-    ├── risk_scoring.py
-    ├── business_signal_engine.py
-    ├── churn_analysis.py
-    ├── forecasting.py
-    ├── segmentation.py
-    ├── snowflake_connector.py
-    └── helpers.py
-
 
 ⸻
 
