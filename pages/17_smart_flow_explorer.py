@@ -9,19 +9,25 @@ from config import SESSION_DF_KEY
 # =====================================================
 st.set_page_config(
     page_title="Smart Flow Explorer",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-st.title("🔗 Smart Flow Explorer")
-st.caption("Enterprise Flow Intelligence • Actual vs Forecast • DS Group")
+# =====================================================
+# HEADER
+# =====================================================
+st.markdown("## 🔗 Smart Flow Explorer")
+st.caption(
+    "Enterprise value-flow intelligence • Boardroom-ready • DS Group AI"
+)
+
+st.divider()
 
 # =====================================================
-# SAFE DATA LOADER (SINGLE SOURCE OF TRUTH)
+# SAFE DATA ACCESS
 # =====================================================
-def get_loaded_df() -> pd.DataFrame:
+def get_loaded_df():
     if SESSION_DF_KEY not in st.session_state:
-        st.warning("📤 Please upload data from **Upload Dataset** page first.")
+        st.warning("📤 Please upload data from **Upload Dataset** page.")
         st.stop()
 
     df = st.session_state[SESSION_DF_KEY]
@@ -37,47 +43,38 @@ df = get_loaded_df()
 # =====================================================
 # REQUIRED COLUMNS
 # =====================================================
-REQUIRED_COLS = [
-    "ZONE",
-    "CITY",
-    "WAREHOUSE",
-    "BRAND",
-    "CATEGORY",
-    "AMOUNT"
-]
+required_cols = ["ZONE", "CITY", "WAREHOUSE", "BRAND", "CATEGORY", "AMOUNT"]
+missing = [c for c in required_cols if c not in df.columns]
 
-missing_cols = [c for c in REQUIRED_COLS if c not in df.columns]
-
-if missing_cols:
-    st.error(f"❌ Missing required columns: {missing_cols}")
+if missing:
+    st.error(f"❌ Required columns missing: {missing}")
     st.stop()
 
 # =====================================================
-# SIDEBAR CONTROLS
+# SIDEBAR — EXECUTIVE CONTROLS
 # =====================================================
 with st.sidebar:
-    st.header("⚙️ Flow Controls")
+    st.header("⚙️ Flow Configuration")
 
-    top_n = st.slider(
-        "Top-N Flow Limit",
-        min_value=5,
-        max_value=50,
-        value=15
+    st.caption("Hierarchy Selection")
+    flow_levels = st.multiselect(
+        "Business Flow Path",
+        ["ZONE", "CITY", "WAREHOUSE", "BRAND", "CATEGORY"],
+        default=["ZONE", "CITY", "BRAND"]
     )
 
-    analysis_mode = st.radio(
-        "Analysis Mode",
-        ["Actual Sales"],
-        horizontal=True
+    st.caption("Focus Scope")
+    top_n = st.slider(
+        "Top Value Flows",
+        5, 40, 15
     )
 
     st.divider()
-
-    st.caption("Flow Path")
-    flow_levels = st.multiselect(
-        "Select flow hierarchy",
-        ["ZONE", "CITY", "WAREHOUSE", "BRAND", "CATEGORY"],
-        default=["ZONE", "CITY", "BRAND"]
+    st.caption("Mode")
+    st.radio(
+        "Analysis Type",
+        ["Actual Sales"],
+        disabled=True
     )
 
     if len(flow_levels) < 2:
@@ -95,16 +92,29 @@ flow_df = (
     .head(top_n)
 )
 
-# =====================================================
-# SANKEY NODE & LINK BUILDER
-# =====================================================
-labels = []
-label_index = {}
-sources = []
-targets = []
-values = []
+total_flow_value = flow_df["AMOUNT"].sum()
+top_flow_value = flow_df.iloc[0]["AMOUNT"]
+concentration_pct = (top_flow_value / total_flow_value) * 100
 
-def get_label_index(label):
+# =====================================================
+# KPI STRIP
+# =====================================================
+k1, k2, k3, k4 = st.columns(4)
+
+k1.metric("💰 Total Flow Value", f"₹{total_flow_value:,.0f}")
+k2.metric("🔥 Top Flow Value", f"₹{top_flow_value:,.0f}")
+k3.metric("⚠️ Concentration", f"{concentration_pct:.1f}%")
+k4.metric("🔗 Flow Nodes", len(flow_levels))
+
+st.divider()
+
+# =====================================================
+# SANKEY BUILD
+# =====================================================
+labels, sources, targets, values = [], [], [], []
+label_index = {}
+
+def idx(label):
     if label not in label_index:
         label_index[label] = len(labels)
         labels.append(label)
@@ -112,24 +122,18 @@ def get_label_index(label):
 
 for _, row in flow_df.iterrows():
     for i in range(len(flow_levels) - 1):
-        src = f"{flow_levels[i]}: {row[flow_levels[i]]}"
-        tgt = f"{flow_levels[i+1]}: {row[flow_levels[i+1]]}"
+        s = f"{flow_levels[i]}: {row[flow_levels[i]]}"
+        t = f"{flow_levels[i+1]}: {row[flow_levels[i+1]]}"
 
-        src_idx = get_label_index(src)
-        tgt_idx = get_label_index(tgt)
-
-        sources.append(src_idx)
-        targets.append(tgt_idx)
+        sources.append(idx(s))
+        targets.append(idx(t))
         values.append(row["AMOUNT"])
 
-# =====================================================
-# SANKEY CHART
-# =====================================================
 fig = go.Figure(
     go.Sankey(
         node=dict(
-            pad=15,
-            thickness=18,
+            pad=20,
+            thickness=20,
             label=labels
         ),
         link=dict(
@@ -141,40 +145,60 @@ fig = go.Figure(
 )
 
 fig.update_layout(
-    title="🔁 Business Flow Mapping (Value Movement)",
-    font_size=11,
-    height=650
+    title="Value Movement Across Business Layers",
+    height=650,
+    font_size=12
 )
 
+# =====================================================
+# MAIN VISUAL
+# =====================================================
+st.subheader("📊 Business Value Flow Map")
 st.plotly_chart(fig, use_container_width=True)
 
 # =====================================================
-# AI-STYLE EXPLANATION (RULE-BASED)
+# EXECUTIVE INTERPRETATION
 # =====================================================
 st.subheader("🧠 Executive Interpretation")
 
-top_flow = flow_df.iloc[0]
+c1, c2, c3 = st.columns(3)
 
-st.markdown(
-    f"""
-**Key Observation**
-- Highest value flow detected through **{flow_levels[0]} → {flow_levels[-1]}**
-- Top contributor: **{top_flow[flow_levels[-1]]}**
-- Value impact: **₹{top_flow['AMOUNT']:,.0f}**
+with c1:
+    st.markdown("### 🔍 Observation")
+    st.markdown(
+        f"""
+        • Strong value concentration detected  
+        • Dominant path controls **{concentration_pct:.1f}%** of flow  
+        • Limited diversification across paths
+        """
+    )
 
-**Strategic Insight**
-- Revenue concentration visible in limited paths
-- Indicates dependency on specific regions / brands
-- Opportunity to diversify flow channels
+with c2:
+    st.markdown("### ⚠️ Why It Matters")
+    st.markdown(
+        """
+        • High dependency increases risk exposure  
+        • Disruption in one node impacts revenue  
+        • Growth ceiling due to narrow channels
+        """
+    )
 
-**Action Recommendation**
-- Strengthen mid-tier flows
-- Reduce over-reliance on dominant nodes
-- Replicate high-performing paths across regions
-"""
-)
+with c3:
+    st.markdown("### ✅ Recommended Actions")
+    st.markdown(
+        """
+        • Replicate top flows in other regions  
+        • Strengthen secondary brands / cities  
+        • Reduce single-path dependency
+        """
+    )
 
+st.divider()
+
+# =====================================================
+# FOOTER NOTE
+# =====================================================
 st.caption(
-    "Executive Note: This insight is generated deterministically from uploaded data. "
-    "No AI models or external APIs were used."
+    "Executive Note: This analysis is rule-based, deterministic, and derived "
+    "directly from uploaded data. No external AI or prediction models used."
 )
