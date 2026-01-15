@@ -13,11 +13,29 @@ st.set_page_config(
 )
 
 # =====================================================
+# DARK UI STYLING
+# =====================================================
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-color: #0E1117;
+        color: #FAFAFA;
+    }
+    .block-container {
+        padding-top: 2rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# =====================================================
 # HEADER
 # =====================================================
 st.markdown("## 🔗 Smart Flow Explorer")
 st.caption(
-    "Enterprise value-flow intelligence • Boardroom-ready • DS Group AI"
+    "Enterprise flow intelligence • High-contrast analytical view"
 )
 
 st.divider()
@@ -51,34 +69,24 @@ if missing:
     st.stop()
 
 # =====================================================
-# SIDEBAR — EXECUTIVE CONTROLS
+# SIDEBAR — CONTROLS
 # =====================================================
 with st.sidebar:
-    st.header("⚙️ Flow Configuration")
+    st.header("⚙️ Flow Controls")
 
-    st.caption("Hierarchy Selection")
     flow_levels = st.multiselect(
-        "Business Flow Path",
+        "Flow Path (Left → Right)",
         ["ZONE", "CITY", "WAREHOUSE", "BRAND", "CATEGORY"],
         default=["ZONE", "CITY", "BRAND"]
     )
 
-    st.caption("Focus Scope")
     top_n = st.slider(
-        "Top Value Flows",
-        5, 40, 15
-    )
-
-    st.divider()
-    st.caption("Mode")
-    st.radio(
-        "Analysis Type",
-        ["Actual Sales"],
-        disabled=True
+        "Top Value Paths",
+        5, 40, 20
     )
 
     if len(flow_levels) < 2:
-        st.warning("Select at least 2 levels")
+        st.warning("Select at least 2 flow levels")
 
 # =====================================================
 # DATA PREPARATION
@@ -92,24 +100,8 @@ flow_df = (
     .head(top_n)
 )
 
-total_flow_value = flow_df["AMOUNT"].sum()
-top_flow_value = flow_df.iloc[0]["AMOUNT"]
-concentration_pct = (top_flow_value / total_flow_value) * 100
-
 # =====================================================
-# KPI STRIP
-# =====================================================
-k1, k2, k3, k4 = st.columns(4)
-
-k1.metric("💰 Total Flow Value", f"₹{total_flow_value:,.0f}")
-k2.metric("🔥 Top Flow Value", f"₹{top_flow_value:,.0f}")
-k3.metric("⚠️ Concentration", f"{concentration_pct:.1f}%")
-k4.metric("🔗 Flow Nodes", len(flow_levels))
-
-st.divider()
-
-# =====================================================
-# SANKEY BUILD
+# SANKEY CONSTRUCTION
 # =====================================================
 labels, sources, targets, values = [], [], [], []
 label_index = {}
@@ -122,8 +114,8 @@ def idx(label):
 
 for _, row in flow_df.iterrows():
     for i in range(len(flow_levels) - 1):
-        s = f"{flow_levels[i]}: {row[flow_levels[i]]}"
-        t = f"{flow_levels[i+1]}: {row[flow_levels[i+1]]}"
+        s = f"{row[flow_levels[i]]}"
+        t = f"{row[flow_levels[i + 1]]}"
 
         sources.append(idx(s))
         targets.append(idx(t))
@@ -131,74 +123,52 @@ for _, row in flow_df.iterrows():
 
 fig = go.Figure(
     go.Sankey(
+        arrangement="snap",
         node=dict(
-            pad=20,
-            thickness=20,
-            label=labels
+            pad=25,
+            thickness=22,
+            line=dict(color="#AAAAAA", width=0.5),
+            label=labels,
+            color="#1F7AE0"
         ),
         link=dict(
             source=sources,
             target=targets,
-            value=values
+            value=values,
+            color="rgba(0, 200, 200, 0.6)"
         )
     )
 )
 
 fig.update_layout(
-    title="Value Movement Across Business Layers",
-    height=650,
-    font_size=12
+    title="Value Flow Across Business Dimensions",
+    font=dict(size=13, color="white"),
+    paper_bgcolor="#0E1117",
+    plot_bgcolor="#0E1117",
+    height=700
 )
 
 # =====================================================
-# MAIN VISUAL
+# DISPLAY
 # =====================================================
-st.subheader("📊 Business Value Flow Map")
 st.plotly_chart(fig, use_container_width=True)
 
 # =====================================================
-# EXECUTIVE INTERPRETATION
+# CHART EXPLANATION (ONLY)
 # =====================================================
-st.subheader("🧠 Executive Interpretation")
+st.markdown("### 📌 How to Read This Chart")
 
-c1, c2, c3 = st.columns(3)
+st.markdown(
+    """
+- **Each block** represents a business entity (Zone, City, Brand, etc.)
+- **Flow thickness** represents total sales value movement
+- **Left → Right** shows how value travels across dimensions
+- **Wider paths** indicate dominant business routes
+- **Narrow paths** highlight underutilized or fragmented flows
+"""
+)
 
-with c1:
-    st.markdown("### 🔍 Observation")
-    st.markdown(
-        f"""
-        • Strong value concentration detected  
-        • Dominant path controls **{concentration_pct:.1f}%** of flow  
-        • Limited diversification across paths
-        """
-    )
-
-with c2:
-    st.markdown("### ⚠️ Why It Matters")
-    st.markdown(
-        """
-        • High dependency increases risk exposure  
-        • Disruption in one node impacts revenue  
-        • Growth ceiling due to narrow channels
-        """
-    )
-
-with c3:
-    st.markdown("### ✅ Recommended Actions")
-    st.markdown(
-        """
-        • Replicate top flows in other regions  
-        • Strengthen secondary brands / cities  
-        • Reduce single-path dependency
-        """
-    )
-
-st.divider()
-
-# =====================================================
-# FOOTER NOTE
-# =====================================================
 st.caption(
-    "Executive Note: This analysis is rule-based, deterministic, and derived "
-    "directly from uploaded data. No external AI or prediction models used."
+    "Note: This visualization is generated directly from uploaded transactional data. "
+    "No forecasting or AI assumptions are applied."
 )
