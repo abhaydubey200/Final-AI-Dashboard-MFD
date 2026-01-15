@@ -2,171 +2,179 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-from utils.smart_flow_utils import (
-    prepare_sankey_data,
-    generate_ai_insight
-)
+from config import SESSION_DF_KEY
 
-# --------------------------------------------------
+# =====================================================
 # PAGE CONFIG
-# --------------------------------------------------
+# =====================================================
 st.set_page_config(
     page_title="Smart Flow Explorer",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 st.title("🔗 Smart Flow Explorer")
-st.caption("Actual vs Forecast enabled enterprise flow intelligence")
+st.caption("Enterprise Flow Intelligence • Actual vs Forecast • DS Group")
 
-st.divider()
+# =====================================================
+# SAFE DATA LOADER (SINGLE SOURCE OF TRUTH)
+# =====================================================
+def get_loaded_df() -> pd.DataFrame:
+    if SESSION_DF_KEY not in st.session_state:
+        st.warning("📤 Please upload data from **Upload Dataset** page first.")
+        st.stop()
 
-# --------------------------------------------------
-# LOAD DATA
-# --------------------------------------------------
-if "dataframe" not in st.session_state:
-    st.warning("Please upload data first.")
-    st.stop()
+    df = st.session_state[SESSION_DF_KEY]
 
-df = st.session_state["dataframe"]
+    if df is None or df.empty:
+        st.warning("⚠️ Uploaded dataset is empty.")
+        st.stop()
 
-# --------------------------------------------------
-# SIDEBAR CONTROLS
-# --------------------------------------------------
-with st.sidebar:
-    st.header("Controls")
+    return df.copy()
 
-    metric_type = st.radio(
-        "Metric Type",
-        ["Actual Sales", "Forecast Sales"]
-    )
+df = get_loaded_df()
 
-    value_column = (
-        "FORECAST_SALES"
-        if metric_type == "Forecast Sales"
-        and "FORECAST_SALES" in df.columns
-        else "SALES_AMOUNT"
-    )
-
-    top_n = st.slider(
-        "Top-N Flows",
-        min_value=10,
-        max_value=200,
-        value=50,
-        step=10
-    )
-
-    flow_type = st.selectbox(
-        "Flow Structure",
-        [
-            "Sales Flow",
-            "Warehouse Flow",
-            "Customer Flow",
-            "Order Status Flow"
-        ]
-    )
-
-# --------------------------------------------------
-# FLOW DEFINITIONS
-# --------------------------------------------------
-FLOW_MAP = {
-    "Sales Flow": [
-        "ZONE", "CITY", "OUTLET_CATEGORY",
-        "SKU_PLACED", "ORDERSTATE"
-    ],
-    "Warehouse Flow": [
-        "ZONE", "WAREHOUSE",
-        "SKU_PLACED", "ORDERSTATE", "OUTLET_CATEGORY"
-    ],
-    "Customer Flow": [
-        "CITY", "OUTLET_CATEGORY",
-        "OUTLET_NAME", "SKU_PLACED", "ORDERSTATE"
-    ],
-    "Order Status Flow": [
-        "WAREHOUSE", "ORDERSTATE",
-        "REJECTED_ORDER_COMMENT",
-        "SKU_PLACED", "OUTLET_NAME"
-    ]
-}
-
-flow_columns = [
-    c for c in FLOW_MAP[flow_type] if c in df.columns
+# =====================================================
+# REQUIRED COLUMNS
+# =====================================================
+REQUIRED_COLS = [
+    "ZONE",
+    "CITY",
+    "WAREHOUSE",
+    "BRAND",
+    "CATEGORY",
+    "AMOUNT"
 ]
 
-if len(flow_columns) < 3:
-    st.error("Insufficient columns for Sankey flow.")
+missing_cols = [c for c in REQUIRED_COLS if c not in df.columns]
+
+if missing_cols:
+    st.error(f"❌ Missing required columns: {missing_cols}")
     st.stop()
 
-# --------------------------------------------------
-# BUILD SANKEY DATA
-# --------------------------------------------------
-sankey_df = prepare_sankey_data(
-    df=df,
-    flow_columns=flow_columns,
-    value_column=value_column,
-    top_n=top_n
+# =====================================================
+# SIDEBAR CONTROLS
+# =====================================================
+with st.sidebar:
+    st.header("⚙️ Flow Controls")
+
+    top_n = st.slider(
+        "Top-N Flow Limit",
+        min_value=5,
+        max_value=50,
+        value=15
+    )
+
+    analysis_mode = st.radio(
+        "Analysis Mode",
+        ["Actual Sales"],
+        horizontal=True
+    )
+
+    st.divider()
+
+    st.caption("Flow Path")
+    flow_levels = st.multiselect(
+        "Select flow hierarchy",
+        ["ZONE", "CITY", "WAREHOUSE", "BRAND", "CATEGORY"],
+        default=["ZONE", "CITY", "BRAND"]
+    )
+
+    if len(flow_levels) < 2:
+        st.warning("Select at least 2 levels")
+
+# =====================================================
+# DATA PREPARATION
+# =====================================================
+flow_df = (
+    df[flow_levels + ["AMOUNT"]]
+    .dropna()
+    .groupby(flow_levels, as_index=False)
+    .agg({"AMOUNT": "sum"})
+    .sort_values("AMOUNT", ascending=False)
+    .head(top_n)
 )
 
-labels = pd.unique(
-    sankey_df[["source", "target"]].values.ravel()
-).tolist()
+# =====================================================
+# SANKEY NODE & LINK BUILDER
+# =====================================================
+labels = []
+label_index = {}
+sources = []
+targets = []
+values = []
 
-label_index = {v: i for i, v in enumerate(labels)}
+def get_label_index(label):
+    if label not in label_index:
+        label_index[label] = len(labels)
+        labels.append(label)
+    return label_index[label]
 
-# --------------------------------------------------
+for _, row in flow_df.iterrows():
+    for i in range(len(flow_levels) - 1):
+        src = f"{flow_levels[i]}: {row[flow_levels[i]]}"
+        tgt = f"{flow_levels[i+1]}: {row[flow_levels[i+1]]}"
+
+        src_idx = get_label_index(src)
+        tgt_idx = get_label_index(tgt)
+
+        sources.append(src_idx)
+        targets.append(tgt_idx)
+        values.append(row["AMOUNT"])
+
+# =====================================================
 # SANKEY CHART
-# --------------------------------------------------
+# =====================================================
 fig = go.Figure(
     go.Sankey(
         node=dict(
-            label=labels,
             pad=15,
-            thickness=18
+            thickness=18,
+            label=labels
         ),
         link=dict(
-            source=sankey_df["source"].map(label_index),
-            target=sankey_df["target"].map(label_index),
-            value=sankey_df["value"]
+            source=sources,
+            target=targets,
+            value=values
         )
     )
 )
 
 fig.update_layout(
-    title=f"{flow_type} | {metric_type}",
+    title="🔁 Business Flow Mapping (Value Movement)",
+    font_size=11,
     height=650
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
-# --------------------------------------------------
-# AI EXPLANATION LAYER
-# --------------------------------------------------
-st.divider()
-st.subheader("🤖 AI Business Explanation")
+# =====================================================
+# AI-STYLE EXPLANATION (RULE-BASED)
+# =====================================================
+st.subheader("🧠 Executive Interpretation")
 
-insight = generate_ai_insight(sankey_df)
-st.markdown(insight)
+top_flow = flow_df.iloc[0]
 
-# --------------------------------------------------
-# SUMMARY METRICS
-# --------------------------------------------------
-st.divider()
-col1, col2, col3 = st.columns(3)
+st.markdown(
+    f"""
+**Key Observation**
+- Highest value flow detected through **{flow_levels[0]} → {flow_levels[-1]}**
+- Top contributor: **{top_flow[flow_levels[-1]]}**
+- Value impact: **₹{top_flow['AMOUNT']:,.0f}**
 
-col1.metric(
-    "Total Flow Value",
-    f"{sankey_df['value'].sum():,.0f}"
-)
+**Strategic Insight**
+- Revenue concentration visible in limited paths
+- Indicates dependency on specific regions / brands
+- Opportunity to diversify flow channels
 
-col2.metric(
-    "Unique Paths",
-    sankey_df.shape[0]
-)
-
-col3.metric(
-    "Flow Depth",
-    len(flow_columns)
+**Action Recommendation**
+- Strengthen mid-tier flows
+- Reduce over-reliance on dominant nodes
+- Replicate high-performing paths across regions
+"""
 )
 
 st.caption(
-    "This page is designed for flow intelligence, dependency analysis, and executive decision support."
+    "Executive Note: This insight is generated deterministically from uploaded data. "
+    "No AI models or external APIs were used."
 )
